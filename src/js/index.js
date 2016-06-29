@@ -1,41 +1,108 @@
 'use strict';
 
-var camera;
-var scene;
-var renderer;
-var analyser;
-var analyser2;
-var controls;
-var sourceNode;
-var tempTimer = 0;
 var songBuffer;
-var plane;
-var context;
 
-var init = function() {
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(45, (window.innerWidth / window.innerHeight), 0.1, 1000);
-  camera.position.x = 25;
-  camera.position.y = 5;
-  camera.position.z = 30;
-  camera.lookAt(scene.position);
+var Scene = function() {
+  this.daScene = document.getElementById('daScene');
+  this.renderer = new THREE.WebGLRenderer({alpha: true});
 
-  renderer = new THREE.WebGLRenderer({alpha: true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.autoRotate = true;
+  this.daScene.appendChild(this.renderer.domElement);
 
-  createAudio();
-  createBg();
-  render();
-  sphereElement();
-  loadSong('src/audio/wham.mp3');
+  this.camera = new THREE.PerspectiveCamera(45, (window.innerWidth / window.innerHeight), 0.1, 1000);
+  this.camera.position.z = 50;
 
-  window.addEventListener('resize', onResize);
+  this.scene = new THREE.Scene();
+
+  this.tempTimer = 0;
+
 };
 
-var sphereElement = function() {
+Scene.prototype.init = function() {
+  this.createBg();
+  this.sphereElement();
+
+  // webAudio API - load song
+  var context = new AudioContext();
+  this.analyser = context.createAnalyser();
+  this.analyser.smoothingTimeConstant = 0.4;
+  this.analyser.fftSize = 1024;
+
+  this.analyser2 = context.createAnalyser();
+  this.analyser2.smoothingTimeConstant = 0.4;
+  this.analyser2.fftSize = 1024;
+
+  var sourceNode = context.createBufferSource();
+  var splitter = context.createChannelSplitter();
+
+  sourceNode.connect(splitter);
+
+  splitter.connect(this.analyser, 0);
+  splitter.connect(this.analyser2, 1);
+
+  sourceNode.connect(context.destination);
+
+  requestAnimationFrame(this.animate.bind(this));
+
+  // on resize
+  window.addEventListener('resize', this.onResize.bind(this));
+
+  var request = new XMLHttpRequest();
+  request.open('GET', 'src/audio/wham.mp3', true);
+  request.crossOrigin = 'anonymous';
+  request.responseType = 'arraybuffer';
+
+  // play song
+  request.onload = function() {
+    context.decodeAudioData(request.response, function(buffer) {
+      songBuffer = buffer;
+
+      var dur = buffer.duration;
+
+      sourceNode.buffer = buffer;
+      sourceNode.start(0);
+      sourceNode.loop = true;
+
+    }, this._onError);
+  }.bind(this);
+
+  request.send();
+};
+
+
+Scene.prototype.animate = function() {
+  requestAnimationFrame(this.animate.bind(this));
+  var time = Date.now();
+
+  this.update(time);
+
+  this.renderer.render(this.scene, this.camera);
+};
+
+Scene.prototype.update = function(time) {
+  if (!this.lastTime) {
+    this.lastTime = time;
+    
+    return;
+  }
+
+  var diff = time - this.lastTime;
+  this.lastTime = time;
+
+  var camera = this.camera;
+  var scene = this.scene;
+  var speed = this.speed;
+
+  // this.bgMesh.rotation.y = time * 0.00005;
+  // this.bgMesh.rotation.z = time * 0.000005;
+  //this.camera.rotation.z = time * 0.0005;
+  this.partSystem.rotation.y = time * 0.0005;
+
+  this.updateVisual();
+};
+
+Scene.prototype.sphereElement = function() {
   var sphereGeometry = new THREE.SphereGeometry(4, 12, 12);
 
   var particleBlock = new THREE.PointsMaterial({
@@ -46,68 +113,16 @@ var sphereElement = function() {
 
   particleBlock.blending = THREE.AdditiveBlending;
   
-  var partSystem = new THREE.Points(sphereGeometry, particleBlock);
-  partSystem.softParticles = true;
-  partSystem.name = 'particlez';
-  partSystem.position.x = -2;
-  partSystem.position.y = 2;
-  scene.add(partSystem);
-  document.body.appendChild(renderer.domElement);
+  this.partSystem = new THREE.Points(sphereGeometry, particleBlock);
+  this.partSystem.softParticles = true;
+  this.partSystem.name = 'particlez';
+  this.partSystem.position.x = -2;
+  this.partSystem.position.y = 2;
+  this.scene.add(this.partSystem);
+  document.body.appendChild(this.renderer.domElement);
 };
 
-var createAudio = function() {
-  context = new AudioContext();
-  analyser = context.createAnalyser();
-  analyser.smoothingTimeConstant = 0.4;
-  analyser.fftSize = 1024;
-
-  analyser2 = context.createAnalyser();
-  analyser2.smoothingTimeConstant = 0.4;
-  analyser2.fftSize = 1024;
-
-  sourceNode = context.createBufferSource();
-  var splitter = context.createChannelSplitter();
-
-  sourceNode.connect(splitter);
-
-  splitter.connect(analyser, 0);
-  splitter.connect(analyser2, 1);
-
-  sourceNode.connect(context.destination);
-
-};
-
-var loadSong = function(name) {
-  var request = new XMLHttpRequest();
-  request.open('GET', name, true);
-  request.crossOrigin = 'anonymous';
-  request.responseType = 'arraybuffer';
-
-  // TODO: use Promise
-  // context.decodeAudioData(request.response).then(function(buffer){
-  //   songBuffer = buffer;
-  //   buffer.loop = true;
-  //   playSong(buffer);
-  // });
-  
-  request.onload = function() {
-    context.decodeAudioData(request.response, function(buffer) {
-      songBuffer = buffer;
-      playSong(buffer);
-    }, _onError);
-  };
-
-  request.send();
-};
-
-var playSong = function(buffer) {
-  var dur = buffer.duration;
-  sourceNode.buffer = buffer;
-  sourceNode.start(0);
-  sourceNode.loop = true;
-};
-
-var getAverageVolume = function(array) {
+Scene.prototype.getAverageVolume = function(array) {
   var values = 0;
   var average;
   var length = array.length;
@@ -121,21 +136,21 @@ var getAverageVolume = function(array) {
   return average;
 };
 
-var updateVisual = function() {
-  var array = new Uint8Array(analyser.frequencyBinCount);
-  var visualElement = scene.getObjectByName('particlez');
-  analyser.getByteFrequencyData(array);
-  var average = getAverageVolume(array);
+Scene.prototype.updateVisual = function() {
+  var array = new Uint8Array(this.analyser.frequencyBinCount);
+  var visualElement = this.scene.getObjectByName('particlez');
+  this.analyser.getByteFrequencyData(array);
+  var average = this.getAverageVolume(array);
   
   if (songBuffer) {
-    tempTimer++;
-    if ((tempTimer / 50) == parseInt((songBuffer.duration / 4), 10)) {
+    this.tempTimer++;
+    if ((this.tempTimer / 50) == parseInt((songBuffer.duration / 4), 10)) {
       visualElement.material.color.setHex(0x2dd88e);
-      controls.autoRotate = true;
+      //controls.autoRotate = true;
     }
-    if ((tempTimer / 50) == parseInt((songBuffer.duration / 3), 10)) {
+    if ((this.tempTimer / 50) == parseInt((songBuffer.duration / 3), 10)) {
       visualElement.material.color.setHex(0xc42b2b);
-      controls.autoRotate = true;
+      //controls.autoRotate = true;
     }
   }
 
@@ -143,17 +158,18 @@ var updateVisual = function() {
     visualElement.scale.y = average / 70;
     visualElement.scale.x = average / 70;
     visualElement.scale.z = average / 60;
+    this.bgMesh.rotation.z = average / 2000;
   }
 };
 
-var render = function() {
-  controls.update();
-  updateVisual();
-  renderer.render(scene, camera);
-  requestAnimationFrame(render);
+Scene.prototype.render = function() {
+  //this.controls.update();
+  this.updateVisual();
+  this.renderer.render(this.scene, this.camera);
+  requestAnimationFrame(this.render);
 };
 
-var createBg = function() {
+Scene.prototype.createBg = function() {
   var geometry = new THREE.SphereGeometry(150, 32, 32);
   var texture = new THREE.TextureLoader().load('src/images/bg.jpg');
   var material = new THREE.MeshBasicMaterial({
@@ -161,19 +177,20 @@ var createBg = function() {
     side: THREE.BackSide
   });
 
-  var bgMesh = new THREE.Mesh(geometry, material);
+  this.bgMesh = new THREE.Mesh(geometry, material);
 
-  scene.add(bgMesh);
+  this.scene.add(this.bgMesh);
 };
 
-var onResize = function() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize( window.innerWidth, window.innerHeight );
+Scene.prototype.onResize = function() {
+  this.camera.aspect = window.innerWidth / window.innerHeight;
+  this.camera.updateProjectionMatrix();
+  this.renderer.setSize( window.innerWidth, window.innerHeight );
 };
 
-var _onError = function(e) {
+Scene.prototype._onError = function(e) {
   console.log(e);
 };
 
-window.onload = init;
+var threeScene = new Scene();
+threeScene.init();
