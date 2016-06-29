@@ -1,21 +1,5 @@
 'use strict';
 
-var Scene = function() {
-  this.daScene = document.getElementById('daScene');
-  this.renderer = new THREE.WebGLRenderer({alpha: true});
-
-  this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-  this.canvasScene.appendChild(this.renderer.domElement);
-
-  this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
-  this.camera.position.z = 150;
-
-  this.scene = new THREE.Scene();
-
-};
-
-
 var camera;
 var scene;
 var renderer;
