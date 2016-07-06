@@ -108,6 +108,12 @@ Stage.prototype.init = function() {
   document.body.appendChild(this.renderer.domElement);
   this.renderer.autoClear = false;
 
+  var frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+
+   for (var i = 0; i < frequencyData.length; i++) {
+    console.log(frequencyData[i]);
+  };
+
   this._onResize();
 };
 
@@ -155,40 +161,17 @@ Stage.prototype.update = function(time) {
 Stage.prototype.updateVisual = function() {
   var array = new Uint8Array(this.analyser.frequencyBinCount);
   var frequencyArray = new Float32Array(this.analyser.frequencyBinCount);
-
-  var frequencyData = new Uint8Array(this.barsAnalyser.frequencyBinCount);
-  
   this.analyser.getByteFrequencyData(array);
   this.analyser.getFloatFrequencyData(frequencyArray);
-  
   var average = this._getAverageVolume(array);
   var frequencyAverage = this._getAverageVolume(frequencyArray);
-  var frequencyDataArray = this._getAverageVolume(frequencyData);
 
   this.visualMaterial.uniforms['fogDensity'].value = frequencyAverage / 200;
   this.visualMaterial.uniforms['time'].value = average / 50;
 
-  this.barsArray.forEach(function(bar, index) {
-    bar.style.height = Math.abs(frequencyArray[index]) + 'px';
-  });
-
-};
-
-Stage.prototype.soundBars = function() {
-
-  this.soundBars = document.querySelector('#soundBars');
-
-  this.barsArray = [];
-
-  var barSpacingPercent = this.barsAnalyser.frequencyBinCount / 100;
-  
-  for (var i = 0; i < this.barsAnalyser.frequencyBinCount; i++) {
-
-    this.newBars = document.createElement('div');
-    this.soundBars.appendChild(this.newBars);
-    this.barsArray.push(this.newBars);
-
-  };
+  // for (var i = 0; i < frequencyArray.length; i++) {
+  //   console.log(frequencyArray[i]);
+  // };
 
 };
 
@@ -201,9 +184,6 @@ Stage.prototype.getAudio = function() {
   this.analyser2 = context.createAnalyser();
   this.analyser2.smoothingTimeConstant = 0.4;
   this.analyser2.fftSize = 1024;
-
-  this.barsAnalyser = context.createAnalyser();
-  this.barsAnalyser.fftSize = 64;
 
   var sourceNode = context.createBufferSource();
   var splitter = context.createChannelSplitter();
@@ -236,8 +216,6 @@ Stage.prototype.getAudio = function() {
   }.bind(this);
 
   request.send();
-
-  this.soundBars();
 };
 
 Stage.prototype._getAverageVolume = function(array) {
