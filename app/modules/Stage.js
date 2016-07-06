@@ -3,6 +3,7 @@
 var uniforms;
 
 var THREE = require('three');
+var TweemMax = require('../vendor/TweenMax.min.js');
 
 var OrbitControls = require('../libs/OrbitControls.js');
 
@@ -24,8 +25,6 @@ var Stage = function() {
   this.renderer.setPixelRatio(window.devicePixelRatio);
   this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-  // document.body.appendChild(this.renderer.domElement);
-
   this.camera = new THREE.PerspectiveCamera(35, ((window.innerWidth / 2) / (window.innerHeight / 2)), 1, 3000);
   this.camera.position.z = 4;
 
@@ -34,13 +33,12 @@ var Stage = function() {
   this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
   this.controls.autoRotate = true;
 
-  this.visualElement;
-
 };
 
 Stage.prototype.init = function() {
 
   this.getAudio();
+  this.getParticles();
 
   requestAnimationFrame(this.animate.bind(this));
 
@@ -69,20 +67,19 @@ Stage.prototype.init = function() {
   this.badTVEffect = new THREE.ShaderPass(THREE.BadTVShader);
   this.badTVEffect.uniforms['speed'].value = 10;
   this.badTVEffect.uniforms['rollSpeed'].value = 20;
-  // this.badTVEffect.renderToScreen = true;
   this.composer.addPass(this.badTVEffect);
 
   this.clock = new THREE.Clock();
 
   uniforms = {
 
-    fogDensity: { value: 0.1 },
-    fogColor:   { value: new THREE.Vector3( 0, 0, 0 ) },
-    time:       { value: 1.0 },
-    resolution: { value: new THREE.Vector2() },
-    uvScale:    { value: new THREE.Vector2( 3.0, 1.0 ) },
-    texture1:   { value: new THREE.TextureLoader().load( "images/cloud.png" ) },
-    texture2:   { value: new THREE.TextureLoader().load( "images/lavatile.jpg" ) }
+    fogDensity: {value: 0.1},
+    fogColor:   {value: new THREE.Vector3(0, 0, 0)},
+    time:       {value: 1.0},
+    resolution: {value: new THREE.Vector2()},
+    uvScale:    {value: new THREE.Vector2( 3.0, 1.0)},
+    texture1:   {value: new THREE.TextureLoader().load("images/cloud.png")},
+    texture2:   {value: new THREE.TextureLoader().load("images/lavatile.jpg")}
 
   };
 
@@ -94,12 +91,12 @@ Stage.prototype.init = function() {
   this.visualMaterial = new THREE.ShaderMaterial( {
 
     uniforms: uniforms,
-    vertexShader: document.getElementById( 'vertexShader' ).textContent,
-    fragmentShader: document.getElementById( 'fragmentShader' ).textContent
+    vertexShader: document.getElementById('vertexShader').textContent,
+    fragmentShader: document.getElementById('fragmentShader').textContent
 
   } );
 
-  this.visualMesh = new THREE.Mesh( new THREE.TorusGeometry( size, 0.3, 30, 30 ), this.visualMaterial);
+  this.visualMesh = new THREE.Mesh( new THREE.TorusGeometry(size, 0.3, 30, 30), this.visualMaterial);
   this.visualMesh.rotation.x = 0.3;
   this.scene.add(this.visualMesh);
 
@@ -131,18 +128,13 @@ Stage.prototype.update = function(time) {
     return;
   }  
 
-  // this.object.rotation.x += 0.0025;
-  // this.object.rotation.y += 0.001;
-  //this.partSystem.rotation.y = time * 0.0005;
-
   var delta = 5 * this.clock.getDelta();
-
-  // uniforms.time.value += 0.2 * delta;
-  // this.visualMaterial.uniforms['time'].value += 0.2 * delta;
 
   this.visualMesh.rotation.y += 0.0125 * delta;
   this.visualMesh.rotation.x += 0.05 * delta;
 
+  this.particleSystem.rotation.y += 0.01 * delta;
+  
   this.renderer.clear();
   this.composer.render(0.1);
 
@@ -171,6 +163,8 @@ Stage.prototype.updateVisual = function() {
   this.barsArray.forEach(function(bar, index) {
     bar.style.height = Math.abs(frequencyArray[index]) + 'px';
   });
+
+  this.particleSystem.scale.y = average / 5000;
 
 };
 
@@ -230,7 +224,6 @@ Stage.prototype.getAudio = function() {
       sourceNode.buffer = buffer;
       sourceNode.start(0);
       sourceNode.loop = true;
-      sourceNode.muted = true;
 
     }, this._onError);
   }.bind(this);
@@ -238,6 +231,40 @@ Stage.prototype.getAudio = function() {
   request.send();
 
   this.soundBars();
+};
+
+Stage.prototype.getParticles = function() {
+
+  this.count = 600;
+  this.particles = new THREE.Geometry();
+  var pMaterial = new THREE.PointsMaterial({
+    color: 0xf1f1f1,
+    size: 1,
+    map: new THREE.TextureLoader().load('images/eye.png'),
+    transparent: true,
+    opacity: 0.85
+  });
+
+  window.material = pMaterial;
+
+  for (var p = 0; p < this.count; p++) {
+
+    var pX = Math.random() * 100 - 50;
+    var pY = Math.random() * 100 - 50;
+    var pZ = Math.random() * 100 - 50;
+    this.particle = new THREE.Vector3(pX, pY, pZ);
+    this.particle.velocity = new THREE.Vector3(0, -Math.random(), 0);  
+
+    this.particles.vertices.push(this.particle);
+
+  }
+
+  this.particleSystem = new THREE.Points(this.particles, pMaterial);
+  this.particleSystem.sortParticles = true;
+
+  this.scene.add(this.particleSystem);
+
+
 };
 
 Stage.prototype._getAverageVolume = function(array) {
