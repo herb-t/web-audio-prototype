@@ -3,7 +3,6 @@
 var uniforms;
 
 var THREE = require('three');
-var TweemMax = require('../vendor/TweenMax.min.js');
 
 var OrbitControls = require('../utils/OrbitControls.js');
 
@@ -19,6 +18,10 @@ var BloomPass = require('../utils/BloomPass.js');
 var MaskPass = require('../utils/MaskPass.js');
 var ShaderPass = require('../utils/ShaderPass.js');
 
+
+/*
+* selectors
+*/
 var Stage = function() {
   
   this.renderer = new THREE.WebGLRenderer({alpha: true});
@@ -35,6 +38,10 @@ var Stage = function() {
 
 };
 
+/*
+* get/start audio, add shape mesh and particles
+* add custom shader effects and define uniforms
+*/
 Stage.prototype.init = function() {
 
   this.getAudio();
@@ -91,6 +98,7 @@ Stage.prototype.init = function() {
   document.body.appendChild(this.renderer.domElement);
   this.renderer.autoClear = false;
 
+  // background spin animation
   TweenMax.to(document.querySelector('#bg'), 2000, {
     rotation: -1080,
     yoyo: true,
@@ -105,17 +113,24 @@ Stage.prototype.init = function() {
   this._onResize();
 };
 
+/*
+* runs animations from update method
+*/
 Stage.prototype.animate = function() {
-  requestAnimationFrame(this.animate.bind(this));
   var time = Date.now();
 
+  requestAnimationFrame(this.animate.bind(this));  
   this.update(time);
-
   this.renderer.render(this.scene, this.camera);
 
 };
 
+/*
+* handles anything that needs to be animated/updated
+* updateVisual(), composer(shader), and orbit controls
+*/
 Stage.prototype.update = function(time) {
+  var delta = 5 * this.clock.getDelta();
   var diff = time - this.lastTime;
   this.lastTime = time;
 
@@ -124,8 +139,6 @@ Stage.prototype.update = function(time) {
     
     return;
   }  
-
-  var delta = 5 * this.clock.getDelta();
 
   this.visualMesh.rotation.y += 0.0125 * delta;
   this.visualMesh.rotation.x += 0.05 * delta;
@@ -141,6 +154,9 @@ Stage.prototype.update = function(time) {
 
 };
 
+/*
+* animates/updates anything based on the audio data
+*/
 Stage.prototype.updateVisual = function() {
   var array = new Uint8Array(this.analyser.frequencyBinCount);
   var frequencyArray = new Float32Array(this.analyser.frequencyBinCount);
@@ -151,9 +167,11 @@ Stage.prototype.updateVisual = function() {
   var average = this._getAverageVolume(array);
   var frequencyAverage = this._getAverageVolume(frequencyArray);
 
+  // update shader uniforms
   this.visualMaterial.uniforms['fogDensity'].value = frequencyAverage / 200;
   this.visualMaterial.uniforms['time'].value = average / 50;
 
+  // visual equalizer bars
   this.barsArray.forEach(function(bar, index) {
     bar.style.height = Math.abs(frequencyArray[index]) + 'px';
     bar.style.backgroundColor = '#' + (Math.abs(frequencyArray[index]) * 10000);
@@ -163,6 +181,11 @@ Stage.prototype.updateVisual = function() {
 
 };
 
+/*
+* WebAudio API frequency & volume data
+* loads & plays audio
+* create sound 'bars' for equlizer
+*/
 Stage.prototype.getAudio = function() {
   var context = new AudioContext();
   this.analyser = context.createAnalyser();
@@ -192,6 +215,7 @@ Stage.prototype.getAudio = function() {
 
   var songBuffer;
   
+  // load audio and play it
   request.onload = function() {
     context.decodeAudioData(request.response, function(buffer) {
       songBuffer = buffer;
@@ -210,6 +234,9 @@ Stage.prototype.getAudio = function() {
   this.soundBars();
 };
 
+/*
+* creates sound bars based on frequncy data
+*/
 Stage.prototype.soundBars = function() {
 
   this.soundBars = document.querySelector('#soundBars');
@@ -226,6 +253,9 @@ Stage.prototype.soundBars = function() {
 
 };
 
+/*
+* creates particles and positions them randomly around shape mesh
+*/
 Stage.prototype.getParticles = function() {
 
   this.count = 600;
@@ -258,6 +288,11 @@ Stage.prototype.getParticles = function() {
 
 };
 
+/*
+* gets average from array
+* @param {Array} array
+* @return {Number} average
+*/
 Stage.prototype._getAverageVolume = function(array) {
   var values = 0;
   var average;
@@ -272,6 +307,9 @@ Stage.prototype._getAverageVolume = function(array) {
   return average;
 };
 
+/*
+* handles browser resize
+*/
 Stage.prototype._onResize = function() {
   this.camera.aspect = window.innerWidth / window.innerHeight;
   this.camera.updateProjectionMatrix();
@@ -285,6 +323,10 @@ Stage.prototype._onResize = function() {
   uniforms.resolution.value.y = window.innerHeight;
 };
 
+/*
+* gives error message if problems retrieving audio
+* @param {String} e
+*/
 Stage.prototype._onError = function(e) {
   console.log(e);
 };
