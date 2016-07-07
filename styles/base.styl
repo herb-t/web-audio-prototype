@@ -17,12 +17,11 @@ body
 	overflow hidden
 	background #000
 
-.bg
+#bg
 	pointer-events none
 	width 100%
 	height 100%
 	position absolute
-	// z-index -1
 	opacity 0.25
 	background url('../images/bgz.jpg')no-repeat center center
 	-webkit-background-size cover
@@ -60,7 +59,12 @@ body
 	width 1%
 	height auto
 	float left
-	background rgba(142, 70, 49, 0.45)
+	background-color rgba(142, 70, 49, 0.45)
 	margin 0 1%
+	-webkit-transition background-color 0.8s ease-out
+	-moz-transition background-color 0.8s ease-out
+	-ms-transition background-color 0.8s ease-out
+	-o-transition background-color 0.8s ease-out
+	transition background-color 0.8s ease-out
 
 	 

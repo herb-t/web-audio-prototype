@@ -1,5 +1,6 @@
-# Getting started
+# Audio Visualization with THREE.js and the WebAudio API
 
+Prototyping different audio visual effects with frequency data arrays and shaders.
 This scaffold has two global dependencies: Node and Gulp. To install Node, find the installer here:
 
 * [Node](https://nodejs.org/)

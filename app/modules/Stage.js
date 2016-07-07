@@ -5,19 +5,19 @@ var uniforms;
 var THREE = require('three');
 var TweemMax = require('../vendor/TweenMax.min.js');
 
-var OrbitControls = require('../libs/OrbitControls.js');
+var OrbitControls = require('../utils/OrbitControls.js');
 
 var CopyShader = require('../shaders/CopyShader.js');
 var FilmShader = require('../shaders/FilmShader.js');
 var ConvolutionShader = require('../shaders/ConvolutionShader.js');
 var BadTv = require('../shaders/BadTv.js');
 
-var EffectComposer = require('../libs/EffectComposer.js');
-var RenderPass = require('../libs/RenderPass.js');
-var FilmPass = require('../libs/FilmPass.js');
-var BloomPass = require('../libs/BloomPass.js');
-var MaskPass = require('../libs/MaskPass.js');
-var ShaderPass = require('../libs/ShaderPass.js');
+var EffectComposer = require('../utils/EffectComposer.js');
+var RenderPass = require('../utils/RenderPass.js');
+var FilmPass = require('../utils/FilmPass.js');
+var BloomPass = require('../utils/BloomPass.js');
+var MaskPass = require('../utils/MaskPass.js');
+var ShaderPass = require('../utils/ShaderPass.js');
 
 var Stage = function() {
   
@@ -40,25 +40,13 @@ Stage.prototype.init = function() {
   this.getAudio();
   this.getParticles();
 
-  requestAnimationFrame(this.animate.bind(this));
-
-  // on resize
-  window.addEventListener('resize', this._onResize.bind(this));
-
-  TweenMax.to(document.querySelector('.bg'), 2000, {
-    rotation: -1080,
-    yoyo: true,
-    repeat: -1,
-    ease: Power1.easeOut
-  });
-
-  this.renderModel = new THREE.RenderPass( this.scene, this.camera );
-  this.effectBloom = new THREE.BloomPass( 1.25 );
-  this.effectFilm = new THREE.FilmPass( 0.35, 0.95, 2048, false );
+  this.renderModel = new THREE.RenderPass(this.scene, this.camera);
+  this.effectBloom = new THREE.BloomPass(1.25);
+  this.effectFilm = new THREE.FilmPass(0.35, 0.95, 2048, false);
 
   this.effectFilm.renderToScreen = true;
 
-  this.composer = new THREE.EffectComposer( this.renderer );
+  this.composer = new THREE.EffectComposer(this.renderer);
 
   this.composer.addPass(this.renderModel);
   this.composer.addPass(this.effectBloom);
@@ -100,10 +88,19 @@ Stage.prototype.init = function() {
   this.visualMesh.rotation.x = 0.3;
   this.scene.add(this.visualMesh);
 
-  this.renderer = new THREE.WebGLRenderer({antialias: true});
-  this.renderer.setPixelRatio(window.devicePixelRatio);
   document.body.appendChild(this.renderer.domElement);
   this.renderer.autoClear = false;
+
+  TweenMax.to(document.querySelector('#bg'), 2000, {
+    rotation: -1080,
+    yoyo: true,
+    repeat: -1,
+    ease: Power1.easeOut
+  });
+
+  requestAnimationFrame(this.animate.bind(this));
+
+  window.addEventListener('resize', this._onResize.bind(this));
 
   this._onResize();
 };
@@ -147,42 +144,22 @@ Stage.prototype.update = function(time) {
 Stage.prototype.updateVisual = function() {
   var array = new Uint8Array(this.analyser.frequencyBinCount);
   var frequencyArray = new Float32Array(this.analyser.frequencyBinCount);
-
-  var frequencyData = new Uint8Array(this.barsAnalyser.frequencyBinCount);
   
   this.analyser.getByteFrequencyData(array);
   this.analyser.getFloatFrequencyData(frequencyArray);
   
   var average = this._getAverageVolume(array);
   var frequencyAverage = this._getAverageVolume(frequencyArray);
-  var frequencyDataArray = this._getAverageVolume(frequencyData);
 
   this.visualMaterial.uniforms['fogDensity'].value = frequencyAverage / 200;
   this.visualMaterial.uniforms['time'].value = average / 50;
 
   this.barsArray.forEach(function(bar, index) {
     bar.style.height = Math.abs(frequencyArray[index]) + 'px';
+    bar.style.backgroundColor = '#' + (Math.abs(frequencyArray[index]) * 10000);
   });
 
   this.particleSystem.scale.y = average / 5000;
-
-};
-
-Stage.prototype.soundBars = function() {
-
-  this.soundBars = document.querySelector('#soundBars');
-
-  this.barsArray = [];
-
-  var barSpacingPercent = this.barsAnalyser.frequencyBinCount / 100;
-  
-  for (var i = 0; i < this.barsAnalyser.frequencyBinCount; i++) {
-
-    this.newBars = document.createElement('div');
-    this.soundBars.appendChild(this.newBars);
-    this.barsArray.push(this.newBars);
-
-  };
 
 };
 
@@ -226,11 +203,27 @@ Stage.prototype.getAudio = function() {
       sourceNode.loop = true;
 
     }, this._onError);
-  }.bind(this);
+  };
 
   request.send();
 
   this.soundBars();
+};
+
+Stage.prototype.soundBars = function() {
+
+  this.soundBars = document.querySelector('#soundBars');
+
+  this.barsArray = [];
+  
+  for (var i = 0; i < this.barsAnalyser.frequencyBinCount; i++) {
+
+    this.newBars = document.createElement('div');
+    this.soundBars.appendChild(this.newBars);
+    this.barsArray.push(this.newBars);
+
+  };
+
 };
 
 Stage.prototype.getParticles = function() {
@@ -242,16 +235,15 @@ Stage.prototype.getParticles = function() {
     size: 1,
     map: new THREE.TextureLoader().load('images/eye.png'),
     transparent: true,
+    blending: THREE.AdditiveBlending,
     opacity: 0.85
   });
 
-  window.material = pMaterial;
-
   for (var p = 0; p < this.count; p++) {
-
     var pX = Math.random() * 100 - 50;
     var pY = Math.random() * 100 - 50;
     var pZ = Math.random() * 100 - 50;
+
     this.particle = new THREE.Vector3(pX, pY, pZ);
     this.particle.velocity = new THREE.Vector3(0, -Math.random(), 0);  
 
@@ -263,7 +255,6 @@ Stage.prototype.getParticles = function() {
   this.particleSystem.sortParticles = true;
 
   this.scene.add(this.particleSystem);
-
 
 };
 
