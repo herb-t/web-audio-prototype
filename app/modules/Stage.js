@@ -1,15 +1,9 @@
 'use strict';
 
-var uniforms;
-
 var THREE = require('three');
 
-var OrbitControls = require('../utils/OrbitControls.js');
-
 var CopyShader = require('../shaders/CopyShader.js');
-var FilmShader = require('../shaders/FilmShader.js');
-var ConvolutionShader = require('../shaders/ConvolutionShader.js');
-var BadTv = require('../shaders/BadTv.js');
+var BrightnessShader = require('../shaders/BrightnessShader.js');
 
 var EffectComposer = require('../utils/EffectComposer.js');
 var RenderPass = require('../utils/RenderPass.js');
@@ -17,7 +11,6 @@ var FilmPass = require('../utils/FilmPass.js');
 var BloomPass = require('../utils/BloomPass.js');
 var MaskPass = require('../utils/MaskPass.js');
 var ShaderPass = require('../utils/ShaderPass.js');
-
 
 /*
 * selectors
@@ -28,89 +21,55 @@ var Stage = function() {
   this.renderer.setPixelRatio(window.devicePixelRatio);
   this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-  this.camera = new THREE.PerspectiveCamera(35, ((window.innerWidth / 2) / (window.innerHeight / 2)), 1, 3000);
-  this.camera.position.z = 4;
+  this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+  this.camera.position.z = 5;
 
   this.scene = new THREE.Scene();
 
-  this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-  this.controls.autoRotate = true;
+  this.clock = new THREE.Clock();
+
+  this.randomPoints = [];
+  
+  for ( var i = 0; i < 25; i ++ ) {
+    this.randomPoints.push(new THREE.Vector3( (Math.random() * 200 - 100), (Math.random() * 200 - 100), (Math.random() * 200 - 100) ));
+  }
+
+  this.spline = new THREE.CatmullRomCurve3(this.randomPoints);
+
+  this.camPosIndex = 0;
+
+  this.overlay = document.querySelector('#overlay');
+
+  TweenMax.to(document.querySelector('#overlay'), 120, {scale: 2, ease: Linear.easeOut});
 
 };
 
 /*
-* get/start audio, add shape mesh and particles
-* add custom shader effects and define uniforms
+* bring in audio and scene objects
 */
 Stage.prototype.init = function() {
 
   this.getAudio();
-  this.getParticles();
-
-  this.renderModel = new THREE.RenderPass(this.scene, this.camera);
-  this.effectBloom = new THREE.BloomPass(1.25);
-  this.effectFilm = new THREE.FilmPass(0.35, 0.95, 2048, false);
-
-  this.effectFilm.renderToScreen = true;
+  this.createLayout();
 
   this.composer = new THREE.EffectComposer(this.renderer);
+  this.renderPass = new THREE.RenderPass(this.scene, this.camera)
 
-  this.composer.addPass(this.renderModel);
-  this.composer.addPass(this.effectBloom);
-  this.composer.addPass(this.effectFilm);
+  this.brightnessEffect = new THREE.ShaderPass(THREE.BrightnessShader);
+  this.brightnessEffect.uniforms['amount'].value = 0.1;
+  this.brightnessEffect.renderToScreen = true;
 
-  this.badTVEffect = new THREE.ShaderPass(THREE.BadTVShader);
-  this.badTVEffect.uniforms['speed'].value = 10;
-  this.badTVEffect.uniforms['rollSpeed'].value = 20;
-  this.composer.addPass(this.badTVEffect);
-
-  this.clock = new THREE.Clock();
-
-  uniforms = {
-
-    fogDensity: {value: 0.1},
-    fogColor:   {value: new THREE.Vector3(0, 0, 0)},
-    time:       {value: 1.0},
-    resolution: {value: new THREE.Vector2()},
-    uvScale:    {value: new THREE.Vector2( 3.0, 1.0)},
-    texture1:   {value: new THREE.TextureLoader().load("images/cloud.png")},
-    texture2:   {value: new THREE.TextureLoader().load("images/lavatile.jpg")}
-
-  };
-
-  uniforms.texture1.value.wrapS = uniforms.texture1.value.wrapT = THREE.RepeatWrapping;
-  uniforms.texture2.value.wrapS = uniforms.texture2.value.wrapT = THREE.RepeatWrapping;
-
-  var size = 0.65;
-
-  this.visualMaterial = new THREE.ShaderMaterial( {
-
-    uniforms: uniforms,
-    vertexShader: document.getElementById('vertexShader').textContent,
-    fragmentShader: document.getElementById('fragmentShader').textContent
-
-  } );
-
-  this.visualMesh = new THREE.Mesh( new THREE.TorusGeometry(size, 0.3, 30, 30), this.visualMaterial);
-  this.visualMesh.rotation.x = 0.3;
-  this.scene.add(this.visualMesh);
-
+  this.composer.addPass(this.renderPass);
+  this.composer.addPass(this.brightnessEffect);
+  
   document.body.appendChild(this.renderer.domElement);
-  this.renderer.autoClear = false;
-
-  // background spin animation
-  TweenMax.to(document.querySelector('#bg'), 2000, {
-    rotation: -1080,
-    yoyo: true,
-    repeat: -1,
-    ease: Power1.easeOut
-  });
 
   requestAnimationFrame(this.animate.bind(this));
 
   window.addEventListener('resize', this._onResize.bind(this));
 
   this._onResize();
+
 };
 
 /*
@@ -132,25 +91,40 @@ Stage.prototype.animate = function() {
 Stage.prototype.update = function(time) {
   var delta = 5 * this.clock.getDelta();
   var diff = time - this.lastTime;
+  
   this.lastTime = time;
 
   if (!this.lastTime) {
     this.lastTime = time;
     
     return;
-  }  
-
-  this.visualMesh.rotation.y += 0.0125 * delta;
-  this.visualMesh.rotation.x += 0.05 * delta;
-
-  this.particleSystem.rotation.y += 0.01 * delta;
+  }
   
   this.renderer.clear();
-  this.composer.render(0.1);
-
-  this.controls.update()
+  this.composer.render();
 
   this.updateVisual();
+  this.camPosIndex ++;
+  this.speed = 25000;
+  
+  if (this.camPosIndex > this.speed) {
+    this.camPosIndex = 0;
+  }
+  
+  this.camPos = this.spline.getPoint(this.camPosIndex / this.speed);
+  this.camRot = this.spline.getTangent(this.camPosIndex / this.speed)
+
+  this.camera.position.x = this.camPos.x;
+  this.camera.position.y = this.camPos.y;
+  this.camera.position.z = this.camPos.z;
+  
+  this.camera.rotation.x = this.camRot.x;
+  this.camera.rotation.y = this.camRot.y;
+  this.camera.rotation.z = this.camRot.z;
+  
+  this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+
+  this.sphere3.rotation.z = this.camRot.z;
 
 };
 
@@ -158,26 +132,55 @@ Stage.prototype.update = function(time) {
 * animates/updates anything based on the audio data
 */
 Stage.prototype.updateVisual = function() {
-  var array = new Uint8Array(this.analyser.frequencyBinCount);
+  var lowsArray = new Uint8Array(this.analyser.frequencyBinCount);
   var frequencyArray = new Float32Array(this.analyser.frequencyBinCount);
   
-  this.analyser.getByteFrequencyData(array);
+  this.analyser.getByteFrequencyData(lowsArray);
   this.analyser.getFloatFrequencyData(frequencyArray);
   
-  var average = this._getAverageVolume(array);
+  var average = this._getAverageVolume(lowsArray);
   var frequencyAverage = this._getAverageVolume(frequencyArray);
 
-  // update shader uniforms
-  this.visualMaterial.uniforms['fogDensity'].value = frequencyAverage / 200;
-  this.visualMaterial.uniforms['time'].value = average / 50;
+  // split the array
+  var section = 0;
+  var sliceSize = lowsArray.length/2;
 
-  // visual equalizer bars
-  this.barsArray.forEach(function(bar, index) {
-    bar.style.height = Math.abs(frequencyArray[index]) + 'px';
-    bar.style.backgroundColor = '#' + (Math.abs(frequencyArray[index]) * 10000);
+  for(var s = 0; s < 2; s++) {
+    var totalSlice = 0;
+
+    for ( var i = section; i < (sliceSize*(s+1)); i++ ) {
+      var value = lowsArray[i];
+      totalSlice += value;
+      
+      section = i;
+    }
+
+    totalSlice = totalSlice/sliceSize;
+  }
+
+  // light flash effects based on highs and lows
+  this.brightnessEffect.uniforms['amount'].value = Math.abs(frequencyAverage / 100);
+
+  // do something based on highs and lows
+  if (average > 80) {
+    this.sphere1.scale.y = frequencyAverage / 60;
+    this.sphere1.scale.x = frequencyAverage / 60;
+    this.sphere1.scale.z = frequencyAverage / 60;
+  } else {
+    this.sphere2.scale.y = frequencyAverage / 60;
+    this.sphere2.scale.x = frequencyAverage / 60;
+    this.sphere2.scale.z = frequencyAverage / 60;  
+  };
+
+  // visual equalizer boxes
+  this.boxes.forEach(function(box, index) {
+    box.scale.x = Math.abs(frequencyArray[index] / 100);
+    box.scale.y = Math.abs(frequencyArray[index] / 100);
+    box.scale.z = Math.abs(frequencyArray[index] / 100);
+
+    box.rotation.x = Date.now() * 0.0005;
+    box.rotation.y = Date.now() * 0.00025;
   });
-
-  this.particleSystem.scale.y = average / 5000;
 
 };
 
@@ -188,6 +191,8 @@ Stage.prototype.updateVisual = function() {
 */
 Stage.prototype.getAudio = function() {
   var context = new AudioContext();
+  var offlineContext = new OfflineAudioContext(1, 512, 3000);
+
   this.analyser = context.createAnalyser();
   this.analyser.smoothingTimeConstant = 0.4;
   this.analyser.fftSize = 1024;
@@ -196,10 +201,17 @@ Stage.prototype.getAudio = function() {
   this.analyser2.smoothingTimeConstant = 0.4;
   this.analyser2.fftSize = 1024;
 
-  this.barsAnalyser = context.createAnalyser();
-  this.barsAnalyser.fftSize = 64;
+  this.bassAnalyser = context.createAnalyser();
+  this.bassAnalyser.fftSize = 64;
+
+  // low pass filter (lows)
+  this.filter = offlineContext.createBiquadFilter();
+  this.filter.type = 'lowpass';
+  this.filter.frequency.value = 5000;
+  this.filter.gain.value = 25;
 
   var sourceNode = context.createBufferSource();
+  var offlineSource = offlineContext.createBufferSource();
   var splitter = context.createChannelSplitter();
 
   sourceNode.connect(splitter);
@@ -208,9 +220,11 @@ Stage.prototype.getAudio = function() {
   splitter.connect(this.analyser2, 1);
 
   sourceNode.connect(context.destination);
+  offlineSource.connect(this.filter);
+  this.filter.connect(offlineContext.destination);
 
   var request = new XMLHttpRequest();
-  request.open('GET', 'audio/sasha.mp3', true);
+  request.open('GET', 'audio/mole.mp3', true);
   request.responseType = 'arraybuffer';
 
   var songBuffer;
@@ -226,66 +240,137 @@ Stage.prototype.getAudio = function() {
       sourceNode.start(0);
       sourceNode.loop = true;
 
+      // audio data run through low pass filter
+      offlineContext.startRendering().then(function(renderedBuffer) {
+        console.log('Rendering completed successfully');
+        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var song = audioCtx.createBufferSource();
+        song.buffer = renderedBuffer;
+
+        song.connect(audioCtx.destination);
+
+        offlineSource.connect(offlineContext.destination);
+
+        song.start();
+        TweenMax.to(document.querySelector('#overlay'), 0.5, {autoAlpha: 0, ease: Linear.easeOut});
+
+      }).catch(function(err) {
+          console.log('Rendering failed: ' + err);
+      });
+
     }, this._onError);
   };
 
   request.send();
 
-  this.soundBars();
 };
 
 /*
-* creates sound bars based on frequncy data
+* bring in three.js stuff
 */
-Stage.prototype.soundBars = function() {
+Stage.prototype.createLayout = function() {
+  this.getBoxes();
+  this.getSpheres();
+  this.getBg();
+  this.getLights();
+  this.getTubular();
+};
 
-  this.soundBars = document.querySelector('#soundBars');
+/*
+* two sphere objects
+*/
+Stage.prototype.getSpheres = function() {
 
-  this.barsArray = [];
+  var sphereGeometry = new THREE.SphereGeometry(10, 32, 32);
+  var sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xa21c1c, wireframe: true, transparent: true } );
   
-  for (var i = 0; i < this.barsAnalyser.frequencyBinCount; i++) {
+  // this.sphere1 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  this.sphere1 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  this.sphere1.name = 'sphere1';
+  this.scene.add(this.sphere1);
 
-    this.newBars = document.createElement('div');
-    this.soundBars.appendChild(this.newBars);
-    this.barsArray.push(this.newBars);
+  this.sphere2 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  this.sphere2.name = 'sphere2';
+  this.sphere2.position.x = 150;
+  this.scene.add(this.sphere2);
+};
 
+/*
+* wireframe box objects
+*/
+Stage.prototype.getBoxes = function () {
+  this.boxes = [];
+  this.colors = ['#000080', '#19198c', "#323299", '#4c4ca6', '#6666b2', '#7f7fbf', '#9999cc', '#b2b2d8', '#cccce5', '#e5e5f2', '#ffffff'];
+
+  for (var i = 0; i < 400; i++) {
+    this.box = new THREE.Mesh(
+      new THREE.BoxGeometry(5,5,5),
+      // new THREE.MeshBasicMaterial({color: '#' + Math.floor(Math.random() * 16777215).toString(16), wireframe: true})
+      new THREE.MeshBasicMaterial({color: this.colors[Math.floor(Math.random() * (this.colors.length - 1) + 1)], wireframe: true})
+    );
+
+    this.boxes.push(this.box);
+    
+    this.box.position.x = -300 + Math.random() * 600;
+    this.box.position.y = -300 + Math.random() * 600;  
+    this.box.position.z = -300 + Math.random() * 600;
+
+    this.box.rotation.x = -300 + Math.random() * 600;
+    this.box.rotation.y = -300 + Math.random() * 600;  
+    
+    this.scene.add(this.box);
+  }
+};
+
+/*
+* cylinder objects maps the spine
+*/
+Stage.prototype.getTubular = function() {
+  var step = 0;
+  this.updatedPath = [];
+
+  for (var i = 0; i < 1000; i++) {
+    var r = 1 / 1000;
+    step += r;
+    this.updatedPath.push(this.spline.getPoint(step));
   };
 
+  this.tubeSize = 16;
+  var followGeometry =  new THREE.TubeGeometry(new THREE.CatmullRomCurve3(this.updatedPath), this.updatedPath.length, 2, this.tubeSize);
+  this.mesh = new THREE.Mesh(followGeometry, new THREE.MeshBasicMaterial({color: '#00ffff', wireframe: true, opacity: 0.3}));
+  this.scene.add(this.mesh);
+
 };
 
 /*
-* creates particles and positions them randomly around shape mesh
+* three sphere that surrounds scene
 */
-Stage.prototype.getParticles = function() {
-
-  this.count = 600;
-  this.particles = new THREE.Geometry();
-  var pMaterial = new THREE.PointsMaterial({
-    color: 0xf1f1f1,
-    size: 1,
-    map: new THREE.TextureLoader().load('images/eye.png'),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    opacity: 0.85
+Stage.prototype.getBg = function() {
+  var geometry = new THREE.SphereGeometry(600, 32, 32);
+  var texture = new THREE.TextureLoader().load('images/bg-stars.jpg');
+  var material = new THREE.MeshBasicMaterial({
+    map: texture,
+    side: THREE.BackSide
   });
 
-  for (var p = 0; p < this.count; p++) {
-    var pX = Math.random() * 100 - 50;
-    var pY = Math.random() * 100 - 50;
-    var pZ = Math.random() * 100 - 50;
+  this.bgMesh = new THREE.Mesh(geometry, material);
 
-    this.particle = new THREE.Vector3(pX, pY, pZ);
-    this.particle.velocity = new THREE.Vector3(0, -Math.random(), 0);  
+  this.scene.add(this.bgMesh);
+};
 
-    this.particles.vertices.push(this.particle);
-
-  }
-
-  this.particleSystem = new THREE.Points(this.particles, pMaterial);
-  this.particleSystem.sortParticles = true;
-
-  this.scene.add(this.particleSystem);
-
+/*
+* spotlight attacthed to camera
+*/
+Stage.prototype.getLights = function() {
+  var spotLight = new THREE.SpotLight(0xffffff, 1, 200, 20, 10);
+  spotLight.position.set( 0, 150, 0 );
+    
+  var spotTarget = new THREE.Object3D();
+  spotTarget.position.set(0, 0, 0);
+  spotLight.target = spotTarget;
+    
+  this.camera.add(spotLight);
+  this.camera.add(new THREE.PointLightHelper(spotLight, 1));
 };
 
 /*
@@ -315,12 +400,6 @@ Stage.prototype._onResize = function() {
   this.camera.updateProjectionMatrix();
   
   this.renderer.setSize( window.innerWidth, window.innerHeight );
-  
-  this.composer.setSize( window.innerWidth, window.innerHeight );
-  this.composer.reset();
-
-  uniforms.resolution.value.x = window.innerWidth;
-  uniforms.resolution.value.y = window.innerHeight;
 };
 
 /*
