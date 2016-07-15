@@ -7,7 +7,6 @@ var Stage = require('./modules/Stage');
 var stage = new Stage();
 stage.init();
 
-
 },{"./config":2,"./modules/Stage":3}],2:[function(require,module,exports){
 'use strict';
 
@@ -18,16 +17,10 @@ module.exports = config;
 },{}],3:[function(require,module,exports){
 'use strict';
 
-var uniforms;
-
 var THREE = require('three');
 
-var OrbitControls = require('../utils/OrbitControls.js');
-
 var CopyShader = require('../shaders/CopyShader.js');
-var FilmShader = require('../shaders/FilmShader.js');
-var ConvolutionShader = require('../shaders/ConvolutionShader.js');
-var BadTv = require('../shaders/BadTv.js');
+var BrightnessShader = require('../shaders/BrightnessShader.js');
 
 var EffectComposer = require('../utils/EffectComposer.js');
 var RenderPass = require('../utils/RenderPass.js');
@@ -36,93 +29,56 @@ var BloomPass = require('../utils/BloomPass.js');
 var MaskPass = require('../utils/MaskPass.js');
 var ShaderPass = require('../utils/ShaderPass.js');
 
-
 /*
 * selectors
 */
-var Stage = function() {
-  
-  this.renderer = new THREE.WebGLRenderer({alpha: true});
+var Stage = function Stage() {
+
+  this.renderer = new THREE.WebGLRenderer({ alpha: true });
   this.renderer.setPixelRatio(window.devicePixelRatio);
   this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-  this.camera = new THREE.PerspectiveCamera(35, ((window.innerWidth / 2) / (window.innerHeight / 2)), 1, 3000);
-  this.camera.position.z = 4;
+  this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+  this.camera.position.z = 5;
 
   this.scene = new THREE.Scene();
 
-  this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-  this.controls.autoRotate = true;
+  this.clock = new THREE.Clock();
 
+  this.randomPoints = [];
+
+  for (var i = 0; i < 25; i++) {
+    this.randomPoints.push(new THREE.Vector3(Math.random() * 200 - 100, Math.random() * 200 - 100, Math.random() * 200 - 100));
+  }
+
+  this.spline = new THREE.CatmullRomCurve3(this.randomPoints);
+
+  this.camPosIndex = 0;
+
+  this.overlay = document.querySelector('#overlay');
+
+  TweenMax.to(document.querySelector('#overlay'), 120, { scale: 2, ease: Linear.easeOut });
 };
 
 /*
-* get/start audio, add shape mesh and particles
-* add custom shader effects and define uniforms
+* bring in audio and scene objects
 */
-Stage.prototype.init = function() {
+Stage.prototype.init = function () {
 
   this.getAudio();
-  this.getParticles();
-
-  this.renderModel = new THREE.RenderPass(this.scene, this.camera);
-  this.effectBloom = new THREE.BloomPass(1.25);
-  this.effectFilm = new THREE.FilmPass(0.35, 0.95, 2048, false);
-
-  this.effectFilm.renderToScreen = true;
+  this.createLayout();
 
   this.composer = new THREE.EffectComposer(this.renderer);
+  this.renderPass = new THREE.RenderPass(this.scene, this.camera);
 
-  this.composer.addPass(this.renderModel);
-  this.composer.addPass(this.effectBloom);
-  this.composer.addPass(this.effectFilm);
+  this.brightnessEffect = new THREE.ShaderPass(THREE.BrightnessShader);
+  this.brightnessEffect.uniforms['amount'].value = 0.1;
+  this.brightnessEffect.renderToScreen = true;
 
-  this.badTVEffect = new THREE.ShaderPass(THREE.BadTVShader);
-  this.badTVEffect.uniforms['speed'].value = 10;
-  this.badTVEffect.uniforms['rollSpeed'].value = 20;
-  this.composer.addPass(this.badTVEffect);
-
-  this.clock = new THREE.Clock();
-
-  uniforms = {
-
-    fogDensity: {value: 0.1},
-    fogColor:   {value: new THREE.Vector3(0, 0, 0)},
-    time:       {value: 1.0},
-    resolution: {value: new THREE.Vector2()},
-    uvScale:    {value: new THREE.Vector2( 3.0, 1.0)},
-    texture1:   {value: new THREE.TextureLoader().load("images/cloud.png")},
-    texture2:   {value: new THREE.TextureLoader().load("images/lavatile.jpg")}
-
-  };
-
-  uniforms.texture1.value.wrapS = uniforms.texture1.value.wrapT = THREE.RepeatWrapping;
-  uniforms.texture2.value.wrapS = uniforms.texture2.value.wrapT = THREE.RepeatWrapping;
-
-  var size = 0.65;
-
-  this.visualMaterial = new THREE.ShaderMaterial( {
-
-    uniforms: uniforms,
-    vertexShader: document.getElementById('vertexShader').textContent,
-    fragmentShader: document.getElementById('fragmentShader').textContent
-
-  } );
-
-  this.visualMesh = new THREE.Mesh( new THREE.TorusGeometry(size, 0.3, 30, 30), this.visualMaterial);
-  this.visualMesh.rotation.x = 0.3;
-  this.scene.add(this.visualMesh);
+  this.composer.addPass(this.renderPass);
+  this.composer.addPass(this.brightnessEffect);
 
   document.body.appendChild(this.renderer.domElement);
-  this.renderer.autoClear = false;
-
-  // background spin animation
-  TweenMax.to(document.querySelector('#bg'), 2000, {
-    rotation: -1080,
-    yoyo: true,
-    repeat: -1,
-    ease: Power1.easeOut
-  });
 
   requestAnimationFrame(this.animate.bind(this));
 
@@ -134,69 +90,110 @@ Stage.prototype.init = function() {
 /*
 * runs animations from update method
 */
-Stage.prototype.animate = function() {
+Stage.prototype.animate = function () {
   var time = Date.now();
 
-  requestAnimationFrame(this.animate.bind(this));  
+  requestAnimationFrame(this.animate.bind(this));
   this.update(time);
   this.renderer.render(this.scene, this.camera);
-
 };
 
 /*
 * handles anything that needs to be animated/updated
 * updateVisual(), composer(shader), and orbit controls
 */
-Stage.prototype.update = function(time) {
+Stage.prototype.update = function (time) {
   var delta = 5 * this.clock.getDelta();
   var diff = time - this.lastTime;
+
   this.lastTime = time;
 
   if (!this.lastTime) {
     this.lastTime = time;
-    
+
     return;
-  }  
+  }
 
-  this.visualMesh.rotation.y += 0.0125 * delta;
-  this.visualMesh.rotation.x += 0.05 * delta;
-
-  this.particleSystem.rotation.y += 0.01 * delta;
-  
   this.renderer.clear();
-  this.composer.render(0.1);
-
-  this.controls.update()
+  this.composer.render();
 
   this.updateVisual();
+  this.camPosIndex++;
+  this.speed = 25000;
 
+  if (this.camPosIndex > this.speed) {
+    this.camPosIndex = 0;
+  }
+
+  this.camPos = this.spline.getPoint(this.camPosIndex / this.speed);
+  this.camRot = this.spline.getTangent(this.camPosIndex / this.speed);
+
+  this.camera.position.x = this.camPos.x;
+  this.camera.position.y = this.camPos.y;
+  this.camera.position.z = this.camPos.z;
+
+  this.camera.rotation.x = this.camRot.x;
+  this.camera.rotation.y = this.camRot.y;
+  this.camera.rotation.z = this.camRot.z;
+
+  this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+
+  this.sphere3.rotation.z = this.camRot.z;
 };
 
 /*
 * animates/updates anything based on the audio data
 */
-Stage.prototype.updateVisual = function() {
-  var array = new Uint8Array(this.analyser.frequencyBinCount);
+Stage.prototype.updateVisual = function () {
+  var lowsArray = new Uint8Array(this.analyser.frequencyBinCount);
   var frequencyArray = new Float32Array(this.analyser.frequencyBinCount);
-  
-  this.analyser.getByteFrequencyData(array);
+
+  this.analyser.getByteFrequencyData(lowsArray);
   this.analyser.getFloatFrequencyData(frequencyArray);
-  
-  var average = this._getAverageVolume(array);
+
+  var average = this._getAverageVolume(lowsArray);
   var frequencyAverage = this._getAverageVolume(frequencyArray);
 
-  // update shader uniforms
-  this.visualMaterial.uniforms['fogDensity'].value = frequencyAverage / 200;
-  this.visualMaterial.uniforms['time'].value = average / 50;
+  // split the array
+  var section = 0;
+  var sliceSize = lowsArray.length / 2;
 
-  // visual equalizer bars
-  this.barsArray.forEach(function(bar, index) {
-    bar.style.height = Math.abs(frequencyArray[index]) + 'px';
-    bar.style.backgroundColor = '#' + (Math.abs(frequencyArray[index]) * 10000);
+  for (var s = 0; s < 2; s++) {
+    var totalSlice = 0;
+
+    for (var i = section; i < sliceSize * (s + 1); i++) {
+      var value = lowsArray[i];
+      totalSlice += value;
+
+      section = i;
+    }
+
+    totalSlice = totalSlice / sliceSize;
+  }
+
+  // light flash effects based on highs and lows
+  this.brightnessEffect.uniforms['amount'].value = Math.abs(frequencyAverage / 100);
+
+  // do something based on highs and lows
+  if (average > 80) {
+    this.sphere1.scale.y = frequencyAverage / 60;
+    this.sphere1.scale.x = frequencyAverage / 60;
+    this.sphere1.scale.z = frequencyAverage / 60;
+  } else {
+    this.sphere2.scale.y = frequencyAverage / 60;
+    this.sphere2.scale.x = frequencyAverage / 60;
+    this.sphere2.scale.z = frequencyAverage / 60;
+  };
+
+  // visual equalizer boxes
+  this.boxes.forEach(function (box, index) {
+    box.scale.x = Math.abs(frequencyArray[index] / 100);
+    box.scale.y = Math.abs(frequencyArray[index] / 100);
+    box.scale.z = Math.abs(frequencyArray[index] / 100);
+
+    box.rotation.x = Date.now() * 0.0005;
+    box.rotation.y = Date.now() * 0.00025;
   });
-
-  this.particleSystem.scale.y = average / 5000;
-
 };
 
 /*
@@ -204,8 +201,10 @@ Stage.prototype.updateVisual = function() {
 * loads & plays audio
 * create sound 'bars' for equlizer
 */
-Stage.prototype.getAudio = function() {
+Stage.prototype.getAudio = function () {
   var context = new AudioContext();
+  var offlineContext = new OfflineAudioContext(1, 512, 3000);
+
   this.analyser = context.createAnalyser();
   this.analyser.smoothingTimeConstant = 0.4;
   this.analyser.fftSize = 1024;
@@ -214,10 +213,17 @@ Stage.prototype.getAudio = function() {
   this.analyser2.smoothingTimeConstant = 0.4;
   this.analyser2.fftSize = 1024;
 
-  this.barsAnalyser = context.createAnalyser();
-  this.barsAnalyser.fftSize = 64;
+  this.bassAnalyser = context.createAnalyser();
+  this.bassAnalyser.fftSize = 64;
+
+  // low pass filter (lows)
+  this.filter = offlineContext.createBiquadFilter();
+  this.filter.type = 'lowpass';
+  this.filter.frequency.value = 5000;
+  this.filter.gain.value = 25;
 
   var sourceNode = context.createBufferSource();
+  var offlineSource = offlineContext.createBufferSource();
   var splitter = context.createChannelSplitter();
 
   sourceNode.connect(splitter);
@@ -226,16 +232,18 @@ Stage.prototype.getAudio = function() {
   splitter.connect(this.analyser2, 1);
 
   sourceNode.connect(context.destination);
+  offlineSource.connect(this.filter);
+  this.filter.connect(offlineContext.destination);
 
   var request = new XMLHttpRequest();
-  request.open('GET', 'audio/sasha.mp3', true);
+  request.open('GET', 'audio/mole.mp3', true);
   request.responseType = 'arraybuffer';
 
   var songBuffer;
-  
+
   // load audio and play it
-  request.onload = function() {
-    context.decodeAudioData(request.response, function(buffer) {
+  request.onload = function () {
+    context.decodeAudioData(request.response, function (buffer) {
       songBuffer = buffer;
 
       var dur = buffer.duration;
@@ -244,67 +252,131 @@ Stage.prototype.getAudio = function() {
       sourceNode.start(0);
       sourceNode.loop = true;
 
+      // audio data run through low pass filter
+      offlineContext.startRendering().then(function (renderedBuffer) {
+        console.log('Rendering completed successfully');
+        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var song = audioCtx.createBufferSource();
+        song.buffer = renderedBuffer;
+
+        song.connect(audioCtx.destination);
+
+        offlineSource.connect(offlineContext.destination);
+
+        song.start();
+        TweenMax.to(document.querySelector('#overlay'), 0.5, { autoAlpha: 0, ease: Linear.easeOut });
+      })['catch'](function (err) {
+        console.log('Rendering failed: ' + err);
+      });
     }, this._onError);
   };
 
   request.send();
-
-  this.soundBars();
 };
 
 /*
-* creates sound bars based on frequncy data
+* bring in three.js stuff
 */
-Stage.prototype.soundBars = function() {
+Stage.prototype.createLayout = function () {
+  this.getBoxes();
+  this.getSpheres();
+  this.getBg();
+  this.getLights();
+  this.getTubular();
+};
 
-  this.soundBars = document.querySelector('#soundBars');
+/*
+* two sphere objects
+*/
+Stage.prototype.getSpheres = function () {
 
-  this.barsArray = [];
-  
-  for (var i = 0; i < this.barsAnalyser.frequencyBinCount; i++) {
+  var sphereGeometry = new THREE.SphereGeometry(10, 32, 32);
+  var sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xa21c1c, wireframe: true, transparent: true });
 
-    this.newBars = document.createElement('div');
-    this.soundBars.appendChild(this.newBars);
-    this.barsArray.push(this.newBars);
+  // this.sphere1 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  this.sphere1 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  this.sphere1.name = 'sphere1';
+  this.scene.add(this.sphere1);
 
+  this.sphere2 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  this.sphere2.name = 'sphere2';
+  this.sphere2.position.x = 150;
+  this.scene.add(this.sphere2);
+};
+
+/*
+* wireframe box objects
+*/
+Stage.prototype.getBoxes = function () {
+  this.boxes = [];
+  this.colors = ['#000080', '#19198c', "#323299", '#4c4ca6', '#6666b2', '#7f7fbf', '#9999cc', '#b2b2d8', '#cccce5', '#e5e5f2', '#ffffff'];
+
+  for (var i = 0; i < 400; i++) {
+    this.box = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5),
+    // new THREE.MeshBasicMaterial({color: '#' + Math.floor(Math.random() * 16777215).toString(16), wireframe: true})
+    new THREE.MeshBasicMaterial({ color: this.colors[Math.floor(Math.random() * (this.colors.length - 1) + 1)], wireframe: true }));
+
+    this.boxes.push(this.box);
+
+    this.box.position.x = -300 + Math.random() * 600;
+    this.box.position.y = -300 + Math.random() * 600;
+    this.box.position.z = -300 + Math.random() * 600;
+
+    this.box.rotation.x = -300 + Math.random() * 600;
+    this.box.rotation.y = -300 + Math.random() * 600;
+
+    this.scene.add(this.box);
+  }
+};
+
+/*
+* cylinder objects maps the spine
+*/
+Stage.prototype.getTubular = function () {
+  var step = 0;
+  this.updatedPath = [];
+
+  for (var i = 0; i < 1000; i++) {
+    var r = 1 / 1000;
+    step += r;
+    this.updatedPath.push(this.spline.getPoint(step));
   };
 
+  this.tubeSize = 16;
+  var followGeometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(this.updatedPath), this.updatedPath.length, 2, this.tubeSize);
+  this.mesh = new THREE.Mesh(followGeometry, new THREE.MeshBasicMaterial({ color: '#00ffff', wireframe: true, opacity: 0.3 }));
+  this.scene.add(this.mesh);
 };
 
 /*
-* creates particles and positions them randomly around shape mesh
+* three sphere that surrounds scene
 */
-Stage.prototype.getParticles = function() {
-
-  this.count = 600;
-  this.particles = new THREE.Geometry();
-  var pMaterial = new THREE.PointsMaterial({
-    color: 0xf1f1f1,
-    size: 1,
-    map: new THREE.TextureLoader().load('images/eye.png'),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    opacity: 0.85
+Stage.prototype.getBg = function () {
+  var geometry = new THREE.SphereGeometry(600, 32, 32);
+  var texture = new THREE.TextureLoader().load('images/bg-stars.jpg');
+  var material = new THREE.MeshBasicMaterial({
+    map: texture,
+    side: THREE.BackSide
   });
 
-  for (var p = 0; p < this.count; p++) {
-    var pX = Math.random() * 100 - 50;
-    var pY = Math.random() * 100 - 50;
-    var pZ = Math.random() * 100 - 50;
+  this.bgMesh = new THREE.Mesh(geometry, material);
 
-    this.particle = new THREE.Vector3(pX, pY, pZ);
-    this.particle.velocity = new THREE.Vector3(0, -Math.random(), 0);  
+  this.scene.add(this.bgMesh);
+};
 
-    this.particles.vertices.push(this.particle);
+/*
+* spotlight attacthed to camera
+*/
+Stage.prototype.getLights = function () {
+  var spotLight = new THREE.SpotLight(0xffffff, 1, 200, 20, 10);
+  spotLight.position.set(0, 150, 0);
 
-  }
+  var spotTarget = new THREE.Object3D();
+  spotTarget.position.set(0, 0, 0);
+  spotLight.target = spotTarget;
 
-  this.particleSystem = new THREE.Points(this.particles, pMaterial);
-  this.particleSystem.sortParticles = true;
-  this.particleSystem.depthWrite = false;
-
-  this.scene.add(this.particleSystem);
-
+  this.camera.add(spotLight);
+  this.camera.add(new THREE.PointLightHelper(spotLight, 1));
 };
 
 /*
@@ -312,7 +384,7 @@ Stage.prototype.getParticles = function() {
 * @param {Array} array
 * @return {Number} average
 */
-Stage.prototype._getAverageVolume = function(array) {
+Stage.prototype._getAverageVolume = function (array) {
   var values = 0;
   var average;
   var length = array.length;
@@ -329,277 +401,48 @@ Stage.prototype._getAverageVolume = function(array) {
 /*
 * handles browser resize
 */
-Stage.prototype._onResize = function() {
+Stage.prototype._onResize = function () {
   this.camera.aspect = window.innerWidth / window.innerHeight;
   this.camera.updateProjectionMatrix();
-  
-  this.renderer.setSize( window.innerWidth, window.innerHeight );
-  
-  this.composer.setSize( window.innerWidth, window.innerHeight );
-  this.composer.reset();
 
-  uniforms.resolution.value.x = window.innerWidth;
-  uniforms.resolution.value.y = window.innerHeight;
+  this.renderer.setSize(window.innerWidth, window.innerHeight);
 };
 
 /*
 * gives error message if problems retrieving audio
 * @param {String} e
 */
-Stage.prototype._onError = function(e) {
+Stage.prototype._onError = function (e) {
   console.log(e);
 };
 
 module.exports = Stage;
-},{"../shaders/BadTv.js":4,"../shaders/ConvolutionShader.js":5,"../shaders/CopyShader.js":6,"../shaders/FilmShader.js":7,"../utils/BloomPass.js":8,"../utils/EffectComposer.js":9,"../utils/FilmPass.js":10,"../utils/MaskPass.js":11,"../utils/OrbitControls.js":12,"../utils/RenderPass.js":13,"../utils/ShaderPass.js":14,"three":15}],4:[function(require,module,exports){
+
+},{"../shaders/BrightnessShader.js":4,"../shaders/CopyShader.js":5,"../utils/BloomPass.js":6,"../utils/EffectComposer.js":7,"../utils/FilmPass.js":8,"../utils/MaskPass.js":9,"../utils/RenderPass.js":10,"../utils/ShaderPass.js":11,"three":12}],4:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
 
 /**
- * @author Felix Turner / www.airtight.cc / @felixturner
- *
- * Bad TV Shader
- * Simulates a bad TV via horizontal distortion and vertical roll
- * Uses Ashima WebGl Noise: https://github.com/ashima/webgl-noise
- *
- * time: steadily increasing float passed in
- * distortion: amount of thick distortion
- * distortion2: amount of fine grain distortion
- * speed: distortion vertical travel speed
- * rollSpeed: vertical roll speed
- *
- * The MIT License
- *
- * Copyright (c) 2014 Felix Turner
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
+ * Super Simple Brightness Shader
+ * Adjust brightness of image with an 'amount' Uniform
+ * @author felixturner / http://airtight.cc/
  */
 
-THREE.BadTVShader = {
-  uniforms: {
-    "tDiffuse":    { type: "t", value: null },
-    "time":        { type: "f", value: 0.0 },
-    "distortion":  { type: "f", value: 0.5 },
-    "distortion2": { type: "f", value: 1.5 },
-    "speed":       { type: "f", value: 0.5 },
-    "rollSpeed":   { type: "f", value: 0.0 },
-  },
-
-  vertexShader: [
-    "varying vec2 vUv;",
-    "void main() {",
-    "vUv = uv;",
-    "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-    "}"
-
-  ].join("\n"),
-
-  fragmentShader: [
-
-    "uniform sampler2D tDiffuse;",
-    "uniform float time;",
-    "uniform float distortion;",
-    "uniform float distortion2;",
-    "uniform float speed;",
-    "uniform float rollSpeed;",
-    "varying vec2 vUv;",
-
-    // Start Ashima 2D Simplex Noise
-
-    "vec3 mod289(vec3 x) {",
-    "  return x - floor(x * (1.0 / 289.0)) * 289.0;",
-    "}",
-
-    "vec2 mod289(vec2 x) {",
-    "  return x - floor(x * (1.0 / 289.0)) * 289.0;",
-    "}",
-
-    "vec3 permute(vec3 x) {",
-    "  return mod289(((x*34.0)+1.0)*x);",
-    "}",
-
-    "float snoise(vec2 v)",
-    "  {",
-    "  const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0",
-    "                      0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)",
-    "                     -0.577350269189626,  // -1.0 + 2.0 * C.x",
-    "                      0.024390243902439); // 1.0 / 41.0",
-    "  vec2 i  = floor(v + dot(v, C.yy) );",
-    "  vec2 x0 = v -   i + dot(i, C.xx);",
-
-    "  vec2 i1;",
-    "  i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);",
-    "  vec4 x12 = x0.xyxy + C.xxzz;",
-    " x12.xy -= i1;",
-
-    "  i = mod289(i); // Avoid truncation effects in permutation",
-    "  vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))",
-    "   + i.x + vec3(0.0, i1.x, 1.0 ));",
-
-    "  vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);",
-    "  m = m*m ;",
-    "  m = m*m ;",
-
-    "  vec3 x = 2.0 * fract(p * C.www) - 1.0;",
-    "  vec3 h = abs(x) - 0.5;",
-    "  vec3 ox = floor(x + 0.5);",
-    "  vec3 a0 = x - ox;",
-
-    "  m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );",
-
-    "  vec3 g;",
-    "  g.x  = a0.x  * x0.x  + h.x  * x0.y;",
-    "  g.yz = a0.yz * x12.xz + h.yz * x12.yw;",
-    "  return 130.0 * dot(m, g);",
-    "}",
-
-    // End Ashima 2D Simplex Noise
-
-    "void main() {",
-
-      "vec2 p = vUv;",
-      "float ty = time*speed;",
-      "float yt = p.y - ty;",
-
-      //smooth distortion
-      "float offset = snoise(vec2(yt*3.0,0.0))*0.2;",
-      // boost distortion
-      "offset = pow( offset*distortion,3.0)/distortion;",
-      //add fine grain distortion
-      "offset += snoise(vec2(yt*50.0,0.0))*distortion2*0.001;",
-      //combine distortion on X with roll on Y
-      "gl_FragColor = texture2D(tDiffuse,  vec2(fract(p.x + offset),fract(p.y-time*rollSpeed) ));",
-
-    "}"
-
-  ].join("\n")
-
-};
-},{"three":15}],5:[function(require,module,exports){
-'use strict';
-
-var THREE = require('three');
-
-/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Convolution shader
- * ported from o3d sample to WebGL / GLSL
- * http://o3d.googlecode.com/svn/trunk/samples/convolution.html
- */
-
-THREE.ConvolutionShader = {
-
-	defines: {
-
-		"KERNEL_SIZE_FLOAT": "25.0",
-		"KERNEL_SIZE_INT": "25",
-
-	},
+THREE.BrightnessShader = {
 
 	uniforms: {
-
-		"tDiffuse":        { value: null },
-		"uImageIncrement": { value: new THREE.Vector2( 0.001953125, 0.0 ) },
-		"cKernel":         { value: [] }
-
+		"tDiffuse": { type: "t", value: null },
+		"amount": { type: "f", value: 0.5 }
 	},
 
-	vertexShader: [
+	vertexShader: ["varying vec2 vUv;", "void main() {", "vUv = uv;", "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );", "}"].join("\n"),
 
-		"uniform vec2 uImageIncrement;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv - ( ( KERNEL_SIZE_FLOAT - 1.0 ) / 2.0 ) * uImageIncrement;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join( "\n" ),
-
-	fragmentShader: [
-
-		"uniform float cKernel[ KERNEL_SIZE_INT ];",
-
-		"uniform sampler2D tDiffuse;",
-		"uniform vec2 uImageIncrement;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec2 imageCoord = vUv;",
-			"vec4 sum = vec4( 0.0, 0.0, 0.0, 0.0 );",
-
-			"for( int i = 0; i < KERNEL_SIZE_INT; i ++ ) {",
-
-				"sum += texture2D( tDiffuse, imageCoord ) * cKernel[ i ];",
-				"imageCoord += uImageIncrement;",
-
-			"}",
-
-			"gl_FragColor = sum;",
-
-		"}"
-
-
-	].join( "\n" ),
-
-	buildKernel: function ( sigma ) {
-
-		// We lop off the sqrt(2 * pi) * sigma term, since we're going to normalize anyway.
-
-		function gauss( x, sigma ) {
-
-			return Math.exp( - ( x * x ) / ( 2.0 * sigma * sigma ) );
-
-		}
-
-		var i, values, sum, halfWidth, kMaxKernelSize = 25, kernelSize = 2 * Math.ceil( sigma * 3.0 ) + 1;
-
-		if ( kernelSize > kMaxKernelSize ) kernelSize = kMaxKernelSize;
-		halfWidth = ( kernelSize - 1 ) * 0.5;
-
-		values = new Array( kernelSize );
-		sum = 0.0;
-		for ( i = 0; i < kernelSize; ++ i ) {
-
-			values[ i ] = gauss( i - halfWidth, sigma );
-			sum += values[ i ];
-
-		}
-
-		// normalize the kernel
-
-		for ( i = 0; i < kernelSize; ++ i ) values[ i ] /= sum;
-
-		return values;
-
-	}
+	fragmentShader: ["uniform sampler2D tDiffuse;", "uniform float amount;", "varying vec2 vUv;", "void main() {", "vec4 color = texture2D(tDiffuse, vUv);", "gl_FragColor = color*amount;", "}"].join("\n")
 
 };
-},{"three":15}],6:[function(require,module,exports){
+
+},{"three":12}],5:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -612,155 +455,20 @@ var THREE = require('three');
 
 THREE.CopyShader = {
 
-	uniforms: {
+		uniforms: {
 
-		"tDiffuse": { value: null },
-		"opacity":  { value: 1.0 }
+				"tDiffuse": { value: null },
+				"opacity": { value: 1.0 }
 
-	},
+		},
 
-	vertexShader: [
+		vertexShader: ["varying vec2 vUv;", "void main() {", "vUv = uv;", "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );", "}"].join("\n"),
 
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join( "\n" ),
-
-	fragmentShader: [
-
-		"uniform float opacity;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 texel = texture2D( tDiffuse, vUv );",
-			"gl_FragColor = opacity * texel;",
-
-		"}"
-
-	].join( "\n" )
-
-};
-},{"three":15}],7:[function(require,module,exports){
-'use strict';
-
-var THREE = require('three');
-
-/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Film grain & scanlines shader
- *
- * - ported from HLSL to WebGL / GLSL
- * http://www.truevision3d.com/forums/showcase/staticnoise_colorblackwhite_scanline_shaders-t18698.0.html
- *
- * Screen Space Static Postprocessor
- *
- * Produces an analogue noise overlay similar to a film grain / TV static
- *
- * Original implementation and noise algorithm
- * Pat 'Hawthorne' Shearon
- *
- * Optimized scanlines + noise version with intensity scaling
- * Georg 'Leviathan' Steinrohder
- *
- * This version is provided under a Creative Commons Attribution 3.0 License
- * http://creativecommons.org/licenses/by/3.0/
- */
-
-THREE.FilmShader = {
-
-	uniforms: {
-
-		"tDiffuse":   { value: null },
-		"time":       { value: 0.0 },
-		"nIntensity": { value: 0.5 },
-		"sIntensity": { value: 0.05 },
-		"sCount":     { value: 4096 },
-		"grayscale":  { value: 1 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join( "\n" ),
-
-	fragmentShader: [
-
-		"#include <common>",
-		
-		// control parameter
-		"uniform float time;",
-
-		"uniform bool grayscale;",
-
-		// noise effect intensity value (0 = no effect, 1 = full effect)
-		"uniform float nIntensity;",
-
-		// scanlines effect intensity value (0 = no effect, 1 = full effect)
-		"uniform float sIntensity;",
-
-		// scanlines effect count value (0 = no effect, 4096 = full effect)
-		"uniform float sCount;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			// sample the source
-			"vec4 cTextureScreen = texture2D( tDiffuse, vUv );",
-
-			// make some noise
-			"float dx = rand( vUv + time );",
-
-			// add noise
-			"vec3 cResult = cTextureScreen.rgb + cTextureScreen.rgb * clamp( 0.1 + dx, 0.0, 1.0 );",
-
-			// get us a sine and cosine
-			"vec2 sc = vec2( sin( vUv.y * sCount ), cos( vUv.y * sCount ) );",
-
-			// add scanlines
-			"cResult += cTextureScreen.rgb * vec3( sc.x, sc.y, sc.x ) * sIntensity;",
-
-			// interpolate between source and result by intensity
-			"cResult = cTextureScreen.rgb + clamp( nIntensity, 0.0,1.0 ) * ( cResult - cTextureScreen.rgb );",
-
-			// convert to grayscale if desired
-			"if( grayscale ) {",
-
-				"cResult = vec3( cResult.r * 0.3 + cResult.g * 0.59 + cResult.b * 0.11 );",
-
-			"}",
-
-			"gl_FragColor =  vec4( cResult, cTextureScreen.a );",
-
-		"}"
-
-	].join( "\n" )
+		fragmentShader: ["uniform float opacity;", "uniform sampler2D tDiffuse;", "varying vec2 vUv;", "void main() {", "vec4 texel = texture2D( tDiffuse, vUv );", "gl_FragColor = opacity * texel;", "}"].join("\n")
 
 };
 
-},{"three":15}],8:[function(require,module,exports){
+},{"three":12}],6:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -769,34 +477,33 @@ var THREE = require('three');
  * @author alteredq / http://alteredqualia.com/
  */
 
-THREE.BloomPass = function ( strength, kernelSize, sigma, resolution ) {
+THREE.BloomPass = function (strength, kernelSize, sigma, resolution) {
 
-	THREE.Pass.call( this );
+	THREE.Pass.call(this);
 
-	strength = ( strength !== undefined ) ? strength : 1;
-	kernelSize = ( kernelSize !== undefined ) ? kernelSize : 25;
-	sigma = ( sigma !== undefined ) ? sigma : 4.0;
-	resolution = ( resolution !== undefined ) ? resolution : 256;
+	strength = strength !== undefined ? strength : 1;
+	kernelSize = kernelSize !== undefined ? kernelSize : 25;
+	sigma = sigma !== undefined ? sigma : 4.0;
+	resolution = resolution !== undefined ? resolution : 256;
 
 	// render targets
 
 	var pars = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
 
-	this.renderTargetX = new THREE.WebGLRenderTarget( resolution, resolution, pars );
-	this.renderTargetY = new THREE.WebGLRenderTarget( resolution, resolution, pars );
+	this.renderTargetX = new THREE.WebGLRenderTarget(resolution, resolution, pars);
+	this.renderTargetY = new THREE.WebGLRenderTarget(resolution, resolution, pars);
 
 	// copy material
 
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.BloomPass relies on THREE.CopyShader" );
+	if (THREE.CopyShader === undefined) console.error("THREE.BloomPass relies on THREE.CopyShader");
 
 	var copyShader = THREE.CopyShader;
 
-	this.copyUniforms = THREE.UniformsUtils.clone( copyShader.uniforms );
+	this.copyUniforms = THREE.UniformsUtils.clone(copyShader.uniforms);
 
-	this.copyUniforms[ "opacity" ].value = strength;
+	this.copyUniforms["opacity"].value = strength;
 
-	this.materialCopy = new THREE.ShaderMaterial( {
+	this.materialCopy = new THREE.ShaderMaterial({
 
 		uniforms: this.copyUniforms,
 		vertexShader: copyShader.vertexShader,
@@ -804,84 +511,81 @@ THREE.BloomPass = function ( strength, kernelSize, sigma, resolution ) {
 		blending: THREE.AdditiveBlending,
 		transparent: true
 
-	} );
+	});
 
 	// convolution material
 
-	if ( THREE.ConvolutionShader === undefined )
-		console.error( "THREE.BloomPass relies on THREE.ConvolutionShader" );
+	if (THREE.ConvolutionShader === undefined) console.error("THREE.BloomPass relies on THREE.ConvolutionShader");
 
 	var convolutionShader = THREE.ConvolutionShader;
 
-	this.convolutionUniforms = THREE.UniformsUtils.clone( convolutionShader.uniforms );
+	this.convolutionUniforms = THREE.UniformsUtils.clone(convolutionShader.uniforms);
 
-	this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurX;
-	this.convolutionUniforms[ "cKernel" ].value = THREE.ConvolutionShader.buildKernel( sigma );
+	this.convolutionUniforms["uImageIncrement"].value = THREE.BloomPass.blurX;
+	this.convolutionUniforms["cKernel"].value = THREE.ConvolutionShader.buildKernel(sigma);
 
-	this.materialConvolution = new THREE.ShaderMaterial( {
+	this.materialConvolution = new THREE.ShaderMaterial({
 
 		uniforms: this.convolutionUniforms,
-		vertexShader:  convolutionShader.vertexShader,
+		vertexShader: convolutionShader.vertexShader,
 		fragmentShader: convolutionShader.fragmentShader,
 		defines: {
-			"KERNEL_SIZE_FLOAT": kernelSize.toFixed( 1 ),
-			"KERNEL_SIZE_INT": kernelSize.toFixed( 0 )
+			"KERNEL_SIZE_FLOAT": kernelSize.toFixed(1),
+			"KERNEL_SIZE_INT": kernelSize.toFixed(0)
 		}
 
-	} );
+	});
 
 	this.needsSwap = false;
 
-	this.camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
-	this.scene  = new THREE.Scene();
+	this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+	this.scene = new THREE.Scene();
 
-	this.quad = new THREE.Mesh( new THREE.PlaneBufferGeometry( 2, 2 ), null );
-	this.scene.add( this.quad );
-
+	this.quad = new THREE.Mesh(new THREE.PlaneBufferGeometry(2, 2), null);
+	this.scene.add(this.quad);
 };
 
-THREE.BloomPass.prototype = Object.assign( Object.create( THREE.Pass.prototype ), {
+THREE.BloomPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 
 	constructor: THREE.BloomPass,
 
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+	render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
-		if ( maskActive ) renderer.context.disable( renderer.context.STENCIL_TEST );
+		if (maskActive) renderer.context.disable(renderer.context.STENCIL_TEST);
 
 		// Render quad with blured scene into texture (convolution pass 1)
 
 		this.quad.material = this.materialConvolution;
 
-		this.convolutionUniforms[ "tDiffuse" ].value = readBuffer.texture;
-		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurX;
+		this.convolutionUniforms["tDiffuse"].value = readBuffer.texture;
+		this.convolutionUniforms["uImageIncrement"].value = THREE.BloomPass.blurX;
 
-		renderer.render( this.scene, this.camera, this.renderTargetX, true );
-
+		renderer.render(this.scene, this.camera, this.renderTargetX, true);
 
 		// Render quad with blured scene into texture (convolution pass 2)
 
-		this.convolutionUniforms[ "tDiffuse" ].value = this.renderTargetX.texture;
-		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurY;
+		this.convolutionUniforms["tDiffuse"].value = this.renderTargetX.texture;
+		this.convolutionUniforms["uImageIncrement"].value = THREE.BloomPass.blurY;
 
-		renderer.render( this.scene, this.camera, this.renderTargetY, true );
+		renderer.render(this.scene, this.camera, this.renderTargetY, true);
 
 		// Render original scene with superimposed blur to texture
 
 		this.quad.material = this.materialCopy;
 
-		this.copyUniforms[ "tDiffuse" ].value = this.renderTargetY.texture;
+		this.copyUniforms["tDiffuse"].value = this.renderTargetY.texture;
 
-		if ( maskActive ) renderer.context.enable( renderer.context.STENCIL_TEST );
+		if (maskActive) renderer.context.enable(renderer.context.STENCIL_TEST);
 
-		renderer.render( this.scene, this.camera, readBuffer, this.clear );
-
+		renderer.render(this.scene, this.camera, readBuffer, this.clear);
 	}
 
-} );
+});
 
-THREE.BloomPass.blurX = new THREE.Vector2( 0.001953125, 0.0 );
-THREE.BloomPass.blurY = new THREE.Vector2( 0.0, 0.001953125 );
-},{"three":15}],9:[function(require,module,exports){
+THREE.BloomPass.blurX = new THREE.Vector2(0.001953125, 0.0);
+THREE.BloomPass.blurY = new THREE.Vector2(0.0, 0.001953125);
+
+},{"three":12}],7:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -890,11 +594,11 @@ var THREE = require('three');
  * @author alteredq / http://alteredqualia.com/
  */
 
-THREE.EffectComposer = function ( renderer, renderTarget ) {
+THREE.EffectComposer = function (renderer, renderTarget) {
 
 	this.renderer = renderer;
 
-	if ( renderTarget === undefined ) {
+	if (renderTarget === undefined) {
 
 		var parameters = {
 			minFilter: THREE.LinearFilter,
@@ -903,8 +607,7 @@ THREE.EffectComposer = function ( renderer, renderTarget ) {
 			stencilBuffer: false
 		};
 		var size = renderer.getSize();
-		renderTarget = new THREE.WebGLRenderTarget( size.width, size.height, parameters );
-
+		renderTarget = new THREE.WebGLRenderTarget(size.width, size.height, parameters);
 	}
 
 	this.renderTarget1 = renderTarget;
@@ -915,97 +618,86 @@ THREE.EffectComposer = function ( renderer, renderTarget ) {
 
 	this.passes = [];
 
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.EffectComposer relies on THREE.CopyShader" );
+	if (THREE.CopyShader === undefined) console.error("THREE.EffectComposer relies on THREE.CopyShader");
 
-	this.copyPass = new THREE.ShaderPass( THREE.CopyShader );
-
+	this.copyPass = new THREE.ShaderPass(THREE.CopyShader);
 };
 
-Object.assign( THREE.EffectComposer.prototype, {
+Object.assign(THREE.EffectComposer.prototype, {
 
-	swapBuffers: function() {
+	swapBuffers: function swapBuffers() {
 
 		var tmp = this.readBuffer;
 		this.readBuffer = this.writeBuffer;
 		this.writeBuffer = tmp;
-
 	},
 
-	addPass: function ( pass ) {
+	addPass: function addPass(pass) {
 
-		this.passes.push( pass );
+		this.passes.push(pass);
 
 		var size = this.renderer.getSize();
-		pass.setSize( size.width, size.height );
-
+		pass.setSize(size.width, size.height);
 	},
 
-	insertPass: function ( pass, index ) {
+	insertPass: function insertPass(pass, index) {
 
-		this.passes.splice( index, 0, pass );
-
+		this.passes.splice(index, 0, pass);
 	},
 
-	render: function ( delta ) {
+	render: function render(delta) {
 
 		var maskActive = false;
 
-		var pass, i, il = this.passes.length;
+		var pass,
+		    i,
+		    il = this.passes.length;
 
-		for ( i = 0; i < il; i ++ ) {
+		for (i = 0; i < il; i++) {
 
-			pass = this.passes[ i ];
+			pass = this.passes[i];
 
-			if ( pass.enabled === false ) continue;
+			if (pass.enabled === false) continue;
 
-			pass.render( this.renderer, this.writeBuffer, this.readBuffer, delta, maskActive );
+			pass.render(this.renderer, this.writeBuffer, this.readBuffer, delta, maskActive);
 
-			if ( pass.needsSwap ) {
+			if (pass.needsSwap) {
 
-				if ( maskActive ) {
+				if (maskActive) {
 
 					var context = this.renderer.context;
 
-					context.stencilFunc( context.NOTEQUAL, 1, 0xffffffff );
+					context.stencilFunc(context.NOTEQUAL, 1, 0xffffffff);
 
-					this.copyPass.render( this.renderer, this.writeBuffer, this.readBuffer, delta );
+					this.copyPass.render(this.renderer, this.writeBuffer, this.readBuffer, delta);
 
-					context.stencilFunc( context.EQUAL, 1, 0xffffffff );
-
+					context.stencilFunc(context.EQUAL, 1, 0xffffffff);
 				}
 
 				this.swapBuffers();
-
 			}
 
-			if ( THREE.MaskPass !== undefined ) {
+			if (THREE.MaskPass !== undefined) {
 
-				if ( pass instanceof THREE.MaskPass ) {
+				if (pass instanceof THREE.MaskPass) {
 
 					maskActive = true;
-
-				} else if ( pass instanceof THREE.ClearMaskPass ) {
+				} else if (pass instanceof THREE.ClearMaskPass) {
 
 					maskActive = false;
-
 				}
-
 			}
-
 		}
-
 	},
 
-	reset: function ( renderTarget ) {
+	reset: function reset(renderTarget) {
 
-		if ( renderTarget === undefined ) {
+		if (renderTarget === undefined) {
 
 			var size = this.renderer.getSize();
 
 			renderTarget = this.renderTarget1.clone();
-			renderTarget.setSize( size.width, size.height );
-
+			renderTarget.setSize(size.width, size.height);
 		}
 
 		this.renderTarget1.dispose();
@@ -1015,24 +707,20 @@ Object.assign( THREE.EffectComposer.prototype, {
 
 		this.writeBuffer = this.renderTarget1;
 		this.readBuffer = this.renderTarget2;
-
 	},
 
-	setSize: function ( width, height ) {
+	setSize: function setSize(width, height) {
 
-		this.renderTarget1.setSize( width, height );
-		this.renderTarget2.setSize( width, height );
+		this.renderTarget1.setSize(width, height);
+		this.renderTarget2.setSize(width, height);
 
-		for ( var i = 0; i < this.passes.length; i ++ ) {
+		for (var i = 0; i < this.passes.length; i++) {
 
-			this.passes[i].setSize( width, height );
-
+			this.passes[i].setSize(width, height);
 		}
-
 	}
 
-} );
-
+});
 
 THREE.Pass = function () {
 
@@ -1047,21 +735,20 @@ THREE.Pass = function () {
 
 	// if set to true, the result of the pass is rendered to screen
 	this.renderToScreen = false;
-
 };
 
-Object.assign( THREE.Pass.prototype, {
+Object.assign(THREE.Pass.prototype, {
 
-	setSize: function( width, height ) {},
+	setSize: function setSize(width, height) {},
 
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+	render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
-		console.error( "THREE.Pass: .render() must be implemented in derived pass." );
-
+		console.error("THREE.Pass: .render() must be implemented in derived pass.");
 	}
 
-} );
-},{"three":15}],10:[function(require,module,exports){
+});
+
+},{"three":12}],8:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1070,63 +757,59 @@ var THREE = require('three');
  * @author alteredq / http://alteredqualia.com/
  */
 
-THREE.FilmPass = function ( noiseIntensity, scanlinesIntensity, scanlinesCount, grayscale ) {
+THREE.FilmPass = function (noiseIntensity, scanlinesIntensity, scanlinesCount, grayscale) {
 
-	THREE.Pass.call( this );
+	THREE.Pass.call(this);
 
-	if ( THREE.FilmShader === undefined )
-		console.error( "THREE.FilmPass relies on THREE.FilmShader" );
+	if (THREE.FilmShader === undefined) console.error("THREE.FilmPass relies on THREE.FilmShader");
 
 	var shader = THREE.FilmShader;
 
-	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+	this.uniforms = THREE.UniformsUtils.clone(shader.uniforms);
 
-	this.material = new THREE.ShaderMaterial( {
+	this.material = new THREE.ShaderMaterial({
 
 		uniforms: this.uniforms,
 		vertexShader: shader.vertexShader,
 		fragmentShader: shader.fragmentShader
 
-	} );
+	});
 
-	if ( grayscale !== undefined )	this.uniforms.grayscale.value = grayscale;
-	if ( noiseIntensity !== undefined ) this.uniforms.nIntensity.value = noiseIntensity;
-	if ( scanlinesIntensity !== undefined ) this.uniforms.sIntensity.value = scanlinesIntensity;
-	if ( scanlinesCount !== undefined ) this.uniforms.sCount.value = scanlinesCount;
+	if (grayscale !== undefined) this.uniforms.grayscale.value = grayscale;
+	if (noiseIntensity !== undefined) this.uniforms.nIntensity.value = noiseIntensity;
+	if (scanlinesIntensity !== undefined) this.uniforms.sIntensity.value = scanlinesIntensity;
+	if (scanlinesCount !== undefined) this.uniforms.sCount.value = scanlinesCount;
 
-	this.camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
-	this.scene  = new THREE.Scene();
+	this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+	this.scene = new THREE.Scene();
 
-	this.quad = new THREE.Mesh( new THREE.PlaneBufferGeometry( 2, 2 ), null );
-	this.scene.add( this.quad );
-
+	this.quad = new THREE.Mesh(new THREE.PlaneBufferGeometry(2, 2), null);
+	this.scene.add(this.quad);
 };
 
-THREE.FilmPass.prototype = Object.assign( Object.create( THREE.Pass.prototype ), {
+THREE.FilmPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 
 	constructor: THREE.FilmPass,
 
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+	render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
-		this.uniforms[ "tDiffuse" ].value = readBuffer.texture;
-		this.uniforms[ "time" ].value += delta;
+		this.uniforms["tDiffuse"].value = readBuffer.texture;
+		this.uniforms["time"].value += delta;
 
 		this.quad.material = this.material;
 
-		if ( this.renderToScreen ) {
+		if (this.renderToScreen) {
 
-			renderer.render( this.scene, this.camera );
-
+			renderer.render(this.scene, this.camera);
 		} else {
 
-			renderer.render( this.scene, this.camera, writeBuffer, this.clear );
-
+			renderer.render(this.scene, this.camera, writeBuffer, this.clear);
 		}
-
 	}
 
-} );
-},{"three":15}],11:[function(require,module,exports){
+});
+
+},{"three":12}],9:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1135,688 +818,94 @@ var THREE = require('three');
  * @author alteredq / http://alteredqualia.com/
  */
 
-THREE.MaskPass = function ( scene, camera ) {
+THREE.MaskPass = function (scene, camera) {
 
-	THREE.Pass.call( this );
+		THREE.Pass.call(this);
 
-	this.scene = scene;
-	this.camera = camera;
+		this.scene = scene;
+		this.camera = camera;
 
-	this.clear = true;
-	this.needsSwap = false;
+		this.clear = true;
+		this.needsSwap = false;
 
-	this.inverse = false;
-
+		this.inverse = false;
 };
 
-THREE.MaskPass.prototype = Object.assign( Object.create( THREE.Pass.prototype ), {
+THREE.MaskPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 
-	constructor: THREE.MaskPass,
+		constructor: THREE.MaskPass,
 
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+		render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
-		var context = renderer.context;
-		var state = renderer.state;
+				var context = renderer.context;
+				var state = renderer.state;
 
-		// don't update color or depth
+				// don't update color or depth
 
-		state.buffers.color.setMask( false );
-		state.buffers.depth.setMask( false );
+				state.buffers.color.setMask(false);
+				state.buffers.depth.setMask(false);
 
-		// lock buffers
+				// lock buffers
 
-		state.buffers.color.setLocked( true );
-		state.buffers.depth.setLocked( true );
+				state.buffers.color.setLocked(true);
+				state.buffers.depth.setLocked(true);
 
-		// set up stencil
+				// set up stencil
 
-		var writeValue, clearValue;
+				var writeValue, clearValue;
 
-		if ( this.inverse ) {
+				if (this.inverse) {
 
-			writeValue = 0;
-			clearValue = 1;
+						writeValue = 0;
+						clearValue = 1;
+				} else {
 
-		} else {
+						writeValue = 1;
+						clearValue = 0;
+				}
 
-			writeValue = 1;
-			clearValue = 0;
+				state.buffers.stencil.setTest(true);
+				state.buffers.stencil.setOp(context.REPLACE, context.REPLACE, context.REPLACE);
+				state.buffers.stencil.setFunc(context.ALWAYS, writeValue, 0xffffffff);
+				state.buffers.stencil.setClear(clearValue);
 
+				// draw into the stencil buffer
+
+				renderer.render(this.scene, this.camera, readBuffer, this.clear);
+				renderer.render(this.scene, this.camera, writeBuffer, this.clear);
+
+				// unlock color and depth buffer for subsequent rendering
+
+				state.buffers.color.setLocked(false);
+				state.buffers.depth.setLocked(false);
+
+				// only render where stencil is set to 1
+
+				state.buffers.stencil.setFunc(context.EQUAL, 1, 0xffffffff); // draw if == 1
+				state.buffers.stencil.setOp(context.KEEP, context.KEEP, context.KEEP);
 		}
 
-		state.buffers.stencil.setTest( true );
-		state.buffers.stencil.setOp( context.REPLACE, context.REPLACE, context.REPLACE );
-		state.buffers.stencil.setFunc( context.ALWAYS, writeValue, 0xffffffff );
-		state.buffers.stencil.setClear( clearValue );
-
-		// draw into the stencil buffer
-
-		renderer.render( this.scene, this.camera, readBuffer, this.clear );
-		renderer.render( this.scene, this.camera, writeBuffer, this.clear );
-
-		// unlock color and depth buffer for subsequent rendering
-
-		state.buffers.color.setLocked( false );
-		state.buffers.depth.setLocked( false );
-
-		// only render where stencil is set to 1
-
-		state.buffers.stencil.setFunc( context.EQUAL, 1, 0xffffffff );  // draw if == 1
-		state.buffers.stencil.setOp( context.KEEP, context.KEEP, context.KEEP );
-
-	}
-
-} );
-
+});
 
 THREE.ClearMaskPass = function () {
 
-	THREE.Pass.call( this );
+		THREE.Pass.call(this);
 
-	this.needsSwap = false;
-
+		this.needsSwap = false;
 };
 
-THREE.ClearMaskPass.prototype = Object.create( THREE.Pass.prototype );
+THREE.ClearMaskPass.prototype = Object.create(THREE.Pass.prototype);
 
-Object.assign( THREE.ClearMaskPass.prototype, {
+Object.assign(THREE.ClearMaskPass.prototype, {
 
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+		render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
-		renderer.state.buffers.stencil.setTest( false );
+				renderer.state.buffers.stencil.setTest(false);
+		}
 
-	}
+});
 
-} );
-},{"three":15}],12:[function(require,module,exports){
-'use strict';
-
-var THREE = require('three');
-
-/**
- * @author qiao / https://github.com/qiao
- * @author mrdoob / http://mrdoob.com
- * @author alteredq / http://alteredqualia.com/
- * @author WestLangley / http://github.com/WestLangley
- * @author erich666 / http://erichaines.com
- */
-/*global THREE, console */
-
-// This set of controls performs orbiting, dollying (zooming), and panning. It maintains
-// the "up" direction as +Y, unlike the TrackballControls. Touch on tablet and phones is
-// supported.
-//
-//    Orbit - left mouse / touch: one finger move
-//    Zoom - middle mouse, or mousewheel / touch: two finger spread or squish
-//    Pan - right mouse, or arrow keys / touch: three finter swipe
-//
-// This is a drop-in replacement for (most) TrackballControls used in examples.
-// That is, include this js file and wherever you see:
-//    	controls = new THREE.TrackballControls( camera );
-//      controls.target.z = 150;
-// Simple substitute "OrbitControls" and the control should work as-is.
-
-THREE.OrbitControls = function ( object, domElement ) {
-
-    this.object = object;
-    this.domElement = ( domElement !== undefined ) ? domElement : document;
-
-    // API
-
-    // Set to false to disable this control
-    this.enabled = true;
-
-    // "target" sets the location of focus, where the control orbits around
-    // and where it pans with respect to.
-    this.target = new THREE.Vector3();
-    // center is old, deprecated; use "target" instead
-    this.center = this.target;
-
-    // This option actually enables dollying in and out; left as "zoom" for
-    // backwards compatibility
-    this.noZoom = false;
-    this.zoomSpeed = 1.0;
-    // Limits to how far you can dolly in and out
-    this.minDistance = 0;
-    this.maxDistance = Infinity;
-
-    // Set to true to disable this control
-    this.noRotate = false;
-    this.rotateSpeed = 1.0;
-
-    // Set to true to disable this control
-    this.noPan = false;
-    this.keyPanSpeed = 7.0;	// pixels moved per arrow key push
-
-    // Set to true to automatically rotate around the target
-    this.autoRotate = false;
-    this.autoRotateSpeed = 2.0; // 30 seconds per round when fps is 60
-
-    // How far you can orbit vertically, upper and lower limits.
-    // Range is 0 to Math.PI radians.
-    this.minPolarAngle = 0; // radians
-    this.maxPolarAngle = Math.PI; // radians
-
-    // Set to true to disable use of the keys
-    this.noKeys = false;
-    // The four arrow keys
-    this.keys = { LEFT: 37, UP: 38, RIGHT: 39, BOTTOM: 40 };
-
-    ////////////
-    // internals
-
-    var scope = this;
-
-    var EPS = 0.000001;
-
-    var rotateStart = new THREE.Vector2();
-    var rotateEnd = new THREE.Vector2();
-    var rotateDelta = new THREE.Vector2();
-
-    var panStart = new THREE.Vector2();
-    var panEnd = new THREE.Vector2();
-    var panDelta = new THREE.Vector2();
-
-    var dollyStart = new THREE.Vector2();
-    var dollyEnd = new THREE.Vector2();
-    var dollyDelta = new THREE.Vector2();
-
-    var phiDelta = 0;
-    var thetaDelta = 0;
-    var scale = 1;
-    var pan = new THREE.Vector3();
-
-    var lastPosition = new THREE.Vector3();
-
-    var STATE = { NONE : -1, ROTATE : 0, DOLLY : 1, PAN : 2, TOUCH_ROTATE : 3, TOUCH_DOLLY : 4, TOUCH_PAN : 5 };
-    var state = STATE.NONE;
-
-    // events
-
-    var changeEvent = { type: 'change' };
-
-
-    this.rotateLeft = function ( angle ) {
-
-        if ( angle === undefined ) {
-
-            angle = getAutoRotationAngle();
-
-        }
-
-        thetaDelta -= angle;
-
-    };
-
-    this.rotateUp = function ( angle ) {
-
-        if ( angle === undefined ) {
-
-            angle = getAutoRotationAngle();
-
-        }
-
-        phiDelta -= angle;
-
-    };
-
-    // pass in distance in world space to move left
-    this.panLeft = function ( distance ) {
-
-        var panOffset = new THREE.Vector3();
-        var te = this.object.matrix.elements;
-        // get X column of matrix
-        panOffset.set( te[0], te[1], te[2] );
-        panOffset.multiplyScalar(-distance);
-
-        pan.add( panOffset );
-
-    };
-
-    // pass in distance in world space to move up
-    this.panUp = function ( distance ) {
-
-        var panOffset = new THREE.Vector3();
-        var te = this.object.matrix.elements;
-        // get Y column of matrix
-        panOffset.set( te[4], te[5], te[6] );
-        panOffset.multiplyScalar(distance);
-
-        pan.add( panOffset );
-    };
-
-    // main entry point; pass in Vector2 of change desired in pixel space,
-    // right and down are positive
-    this.pan = function ( delta ) {
-
-        var element = scope.domElement === document ? scope.domElement.body : scope.domElement;
-
-        if ( scope.object.fov !== undefined ) {
-
-            // perspective
-            var position = scope.object.position;
-            var offset = position.clone().sub( scope.target );
-            var targetDistance = offset.length();
-
-            // half of the fov is center to top of screen
-            targetDistance *= Math.tan( (scope.object.fov/2) * Math.PI / 180.0 );
-            // we actually don't use screenWidth, since perspective camera is fixed to screen height
-            scope.panLeft( 2 * delta.x * targetDistance / element.clientHeight );
-            scope.panUp( 2 * delta.y * targetDistance / element.clientHeight );
-
-        } else if ( scope.object.top !== undefined ) {
-
-            // orthographic
-            scope.panLeft( delta.x * (scope.object.right - scope.object.left) / element.clientWidth );
-            scope.panUp( delta.y * (scope.object.top - scope.object.bottom) / element.clientHeight );
-
-        } else {
-
-            // camera neither orthographic or perspective - warn user
-            console.warn( 'WARNING: OrbitControls.js encountered an unknown camera type - pan disabled.' );
-
-        }
-
-    };
-
-    this.dollyIn = function ( dollyScale ) {
-
-        if ( dollyScale === undefined ) {
-
-            dollyScale = getZoomScale();
-
-        }
-
-        scale /= dollyScale;
-
-    };
-
-    this.dollyOut = function ( dollyScale ) {
-
-        if ( dollyScale === undefined ) {
-
-            dollyScale = getZoomScale();
-
-        }
-
-        scale *= dollyScale;
-
-    };
-
-    this.update = function () {
-
-        var position = this.object.position;
-        var offset = position.clone().sub( this.target );
-
-        // angle from z-axis around y-axis
-
-        var theta = Math.atan2( offset.x, offset.z );
-
-        // angle from y-axis
-
-        var phi = Math.atan2( Math.sqrt( offset.x * offset.x + offset.z * offset.z ), offset.y );
-
-        if ( this.autoRotate ) {
-
-            this.rotateLeft( getAutoRotationAngle() );
-
-        }
-
-        theta += thetaDelta;
-        phi += phiDelta;
-
-        // restrict phi to be between desired limits
-        phi = Math.max( this.minPolarAngle, Math.min( this.maxPolarAngle, phi ) );
-
-        // restrict phi to be betwee EPS and PI-EPS
-        phi = Math.max( EPS, Math.min( Math.PI - EPS, phi ) );
-
-        var radius = offset.length() * scale;
-
-        // restrict radius to be between desired limits
-        radius = Math.max( this.minDistance, Math.min( this.maxDistance, radius ) );
-
-        // move target to panned location
-        this.target.add( pan );
-
-        offset.x = radius * Math.sin( phi ) * Math.sin( theta );
-        offset.y = radius * Math.cos( phi );
-        offset.z = radius * Math.sin( phi ) * Math.cos( theta );
-
-        position.copy( this.target ).add( offset );
-
-        this.object.lookAt( this.target );
-
-        thetaDelta = 0;
-        phiDelta = 0;
-        scale = 1;
-        pan.set(0,0,0);
-
-        if ( lastPosition.distanceTo( this.object.position ) > 0 ) {
-
-            this.dispatchEvent( changeEvent );
-
-            lastPosition.copy( this.object.position );
-
-        }
-
-    };
-
-
-    function getAutoRotationAngle() {
-
-        return 2 * Math.PI / 60 / 60 * scope.autoRotateSpeed;
-
-    }
-
-    function getZoomScale() {
-
-        return Math.pow( 0.95, scope.zoomSpeed );
-
-    }
-
-    function onMouseDown( event ) {
-
-        if ( scope.enabled === false ) { return; }
-        event.preventDefault();
-
-        if ( event.button === 0 ) {
-            if ( scope.noRotate === true ) { return; }
-
-            state = STATE.ROTATE;
-
-            rotateStart.set( event.clientX, event.clientY );
-
-        } else if ( event.button === 1 ) {
-            if ( scope.noZoom === true ) { return; }
-
-            state = STATE.DOLLY;
-
-            dollyStart.set( event.clientX, event.clientY );
-
-        } else if ( event.button === 2 ) {
-            if ( scope.noPan === true ) { return; }
-
-            state = STATE.PAN;
-
-            panStart.set( event.clientX, event.clientY );
-
-        }
-
-        // Greggman fix: https://github.com/greggman/three.js/commit/fde9f9917d6d8381f06bf22cdff766029d1761be
-        scope.domElement.addEventListener( 'mousemove', onMouseMove, false );
-        scope.domElement.addEventListener( 'mouseup', onMouseUp, false );
-
-    }
-
-    function onMouseMove( event ) {
-
-        if ( scope.enabled === false ) return;
-
-        event.preventDefault();
-
-        var element = scope.domElement === document ? scope.domElement.body : scope.domElement;
-
-        if ( state === STATE.ROTATE ) {
-
-            if ( scope.noRotate === true ) return;
-
-            rotateEnd.set( event.clientX, event.clientY );
-            rotateDelta.subVectors( rotateEnd, rotateStart );
-
-            // rotating across whole screen goes 360 degrees around
-            scope.rotateLeft( 2 * Math.PI * rotateDelta.x / element.clientWidth * scope.rotateSpeed );
-            // rotating up and down along whole screen attempts to go 360, but limited to 180
-            scope.rotateUp( 2 * Math.PI * rotateDelta.y / element.clientHeight * scope.rotateSpeed );
-
-            rotateStart.copy( rotateEnd );
-
-        } else if ( state === STATE.DOLLY ) {
-
-            if ( scope.noZoom === true ) return;
-
-            dollyEnd.set( event.clientX, event.clientY );
-            dollyDelta.subVectors( dollyEnd, dollyStart );
-
-            if ( dollyDelta.y > 0 ) {
-
-                scope.dollyIn();
-
-            } else {
-
-                scope.dollyOut();
-
-            }
-
-            dollyStart.copy( dollyEnd );
-
-        } else if ( state === STATE.PAN ) {
-
-            if ( scope.noPan === true ) return;
-
-            panEnd.set( event.clientX, event.clientY );
-            panDelta.subVectors( panEnd, panStart );
-
-            scope.pan( panDelta );
-
-            panStart.copy( panEnd );
-
-        }
-
-        // Greggman fix: https://github.com/greggman/three.js/commit/fde9f9917d6d8381f06bf22cdff766029d1761be
-        scope.update();
-
-    }
-
-    function onMouseUp( /* event */ ) {
-
-        if ( scope.enabled === false ) return;
-
-        // Greggman fix: https://github.com/greggman/three.js/commit/fde9f9917d6d8381f06bf22cdff766029d1761be
-        scope.domElement.removeEventListener( 'mousemove', onMouseMove, false );
-        scope.domElement.removeEventListener( 'mouseup', onMouseUp, false );
-
-        state = STATE.NONE;
-
-    }
-
-    function onMouseWheel( event ) {
-
-        if ( scope.enabled === false || scope.noZoom === true ) return;
-
-        var delta = 0;
-
-        if ( event.wheelDelta ) { // WebKit / Opera / Explorer 9
-
-            delta = event.wheelDelta;
-
-        } else if ( event.detail ) { // Firefox
-
-            delta = - event.detail;
-
-        }
-
-        if ( delta > 0 ) {
-
-            scope.dollyOut();
-
-        } else {
-
-            scope.dollyIn();
-
-        }
-
-    }
-
-    function onKeyDown( event ) {
-
-        if ( scope.enabled === false ) { return; }
-        if ( scope.noKeys === true ) { return; }
-        if ( scope.noPan === true ) { return; }
-
-        // pan a pixel - I guess for precise positioning?
-        // Greggman fix: https://github.com/greggman/three.js/commit/fde9f9917d6d8381f06bf22cdff766029d1761be
-        var needUpdate = false;
-
-        switch ( event.keyCode ) {
-
-            case scope.keys.UP:
-                scope.pan( new THREE.Vector2( 0, scope.keyPanSpeed ) );
-                needUpdate = true;
-                break;
-            case scope.keys.BOTTOM:
-                scope.pan( new THREE.Vector2( 0, -scope.keyPanSpeed ) );
-                needUpdate = true;
-                break;
-            case scope.keys.LEFT:
-                scope.pan( new THREE.Vector2( scope.keyPanSpeed, 0 ) );
-                needUpdate = true;
-                break;
-            case scope.keys.RIGHT:
-                scope.pan( new THREE.Vector2( -scope.keyPanSpeed, 0 ) );
-                needUpdate = true;
-                break;
-        }
-
-        // Greggman fix: https://github.com/greggman/three.js/commit/fde9f9917d6d8381f06bf22cdff766029d1761be
-        if ( needUpdate ) {
-
-            scope.update();
-
-        }
-
-    }
-
-    function touchstart( event ) {
-
-        if ( scope.enabled === false ) { return; }
-
-        switch ( event.touches.length ) {
-
-            case 1:	// one-fingered touch: rotate
-                if ( scope.noRotate === true ) { return; }
-
-                state = STATE.TOUCH_ROTATE;
-
-                rotateStart.set( event.touches[ 0 ].pageX, event.touches[ 0 ].pageY );
-                break;
-
-            case 2:	// two-fingered touch: dolly
-                if ( scope.noZoom === true ) { return; }
-
-                state = STATE.TOUCH_DOLLY;
-
-                var dx = event.touches[ 0 ].pageX - event.touches[ 1 ].pageX;
-                var dy = event.touches[ 0 ].pageY - event.touches[ 1 ].pageY;
-                var distance = Math.sqrt( dx * dx + dy * dy );
-                dollyStart.set( 0, distance );
-                break;
-
-            case 3: // three-fingered touch: pan
-                if ( scope.noPan === true ) { return; }
-
-                state = STATE.TOUCH_PAN;
-
-                panStart.set( event.touches[ 0 ].pageX, event.touches[ 0 ].pageY );
-                break;
-
-            default:
-                state = STATE.NONE;
-
-        }
-    }
-
-    function touchmove( event ) {
-
-        if ( scope.enabled === false ) { return; }
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        var element = scope.domElement === document ? scope.domElement.body : scope.domElement;
-
-        switch ( event.touches.length ) {
-
-            case 1: // one-fingered touch: rotate
-                if ( scope.noRotate === true ) { return; }
-                if ( state !== STATE.TOUCH_ROTATE ) { return; }
-
-                rotateEnd.set( event.touches[ 0 ].pageX, event.touches[ 0 ].pageY );
-                rotateDelta.subVectors( rotateEnd, rotateStart );
-
-                // rotating across whole screen goes 360 degrees around
-                scope.rotateLeft( 2 * Math.PI * rotateDelta.x / element.clientWidth * scope.rotateSpeed );
-                // rotating up and down along whole screen attempts to go 360, but limited to 180
-                scope.rotateUp( 2 * Math.PI * rotateDelta.y / element.clientHeight * scope.rotateSpeed );
-
-                rotateStart.copy( rotateEnd );
-                break;
-
-            case 2: // two-fingered touch: dolly
-                if ( scope.noZoom === true ) { return; }
-                if ( state !== STATE.TOUCH_DOLLY ) { return; }
-
-                var dx = event.touches[ 0 ].pageX - event.touches[ 1 ].pageX;
-                var dy = event.touches[ 0 ].pageY - event.touches[ 1 ].pageY;
-                var distance = Math.sqrt( dx * dx + dy * dy );
-
-                dollyEnd.set( 0, distance );
-                dollyDelta.subVectors( dollyEnd, dollyStart );
-
-                if ( dollyDelta.y > 0 ) {
-
-                    scope.dollyOut();
-
-                } else {
-
-                    scope.dollyIn();
-
-                }
-
-                dollyStart.copy( dollyEnd );
-                break;
-
-            case 3: // three-fingered touch: pan
-                if ( scope.noPan === true ) { return; }
-                if ( state !== STATE.TOUCH_PAN ) { return; }
-
-                panEnd.set( event.touches[ 0 ].pageX, event.touches[ 0 ].pageY );
-                panDelta.subVectors( panEnd, panStart );
-
-                scope.pan( panDelta );
-
-                panStart.copy( panEnd );
-                break;
-
-            default:
-                state = STATE.NONE;
-
-        }
-
-    }
-
-    function touchend( /* event */ ) {
-
-        if ( scope.enabled === false ) { return; }
-
-        state = STATE.NONE;
-    }
-
-    this.domElement.addEventListener( 'contextmenu', function ( event ) { event.preventDefault(); }, false );
-    this.domElement.addEventListener( 'mousedown', onMouseDown, false );
-    this.domElement.addEventListener( 'mousewheel', onMouseWheel, false );
-    this.domElement.addEventListener( 'DOMMouseScroll', onMouseWheel, false ); // firefox
-
-    this.domElement.addEventListener( 'keydown', onKeyDown, false );
-
-    this.domElement.addEventListener( 'touchstart', touchstart, false );
-    this.domElement.addEventListener( 'touchend', touchend, false );
-    this.domElement.addEventListener( 'touchmove', touchmove, false );
-
-};
-
-THREE.OrbitControls.prototype = Object.create( THREE.EventDispatcher.prototype );
-},{"three":15}],13:[function(require,module,exports){
+},{"three":12}],10:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1825,9 +914,9 @@ var THREE = require('three');
  * @author alteredq / http://alteredqualia.com/
  */
 
-THREE.RenderPass = function ( scene, camera, overrideMaterial, clearColor, clearAlpha ) {
+THREE.RenderPass = function (scene, camera, overrideMaterial, clearColor, clearAlpha) {
 
-	THREE.Pass.call( this );
+	THREE.Pass.call(this);
 
 	this.scene = scene;
 	this.camera = camera;
@@ -1835,46 +924,43 @@ THREE.RenderPass = function ( scene, camera, overrideMaterial, clearColor, clear
 	this.overrideMaterial = overrideMaterial;
 
 	this.clearColor = clearColor;
-	this.clearAlpha = ( clearAlpha !== undefined ) ? clearAlpha : 0;
+	this.clearAlpha = clearAlpha !== undefined ? clearAlpha : 0;
 
 	this.clear = true;
 	this.needsSwap = false;
-
 };
 
-THREE.RenderPass.prototype = Object.assign( Object.create( THREE.Pass.prototype ), {
+THREE.RenderPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 
 	constructor: THREE.RenderPass,
 
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+	render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
 		this.scene.overrideMaterial = this.overrideMaterial;
 
 		var oldClearColor, oldClearAlpha;
 
-		if ( this.clearColor ) {
+		if (this.clearColor) {
 
 			oldClearColor = renderer.getClearColor().getHex();
 			oldClearAlpha = renderer.getClearAlpha();
 
-			renderer.setClearColor( this.clearColor, this.clearAlpha );
-
+			renderer.setClearColor(this.clearColor, this.clearAlpha);
 		}
 
-		renderer.render( this.scene, this.camera, this.renderToScreen ? null : readBuffer, this.clear );
+		renderer.render(this.scene, this.camera, this.renderToScreen ? null : readBuffer, this.clear);
 
-		if ( this.clearColor ) {
+		if (this.clearColor) {
 
-			renderer.setClearColor( oldClearColor, oldClearAlpha );
-
+			renderer.setClearColor(oldClearColor, oldClearAlpha);
 		}
 
 		this.scene.overrideMaterial = null;
-
 	}
 
-} );
-},{"three":15}],14:[function(require,module,exports){
+});
+
+},{"three":12}],11:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1883,69 +969,63 @@ var THREE = require('three');
  * @author alteredq / http://alteredqualia.com/
  */
 
-THREE.ShaderPass = function ( shader, textureID ) {
+THREE.ShaderPass = function (shader, textureID) {
 
-	THREE.Pass.call( this );
+	THREE.Pass.call(this);
 
-	this.textureID = ( textureID !== undefined ) ? textureID : "tDiffuse";
+	this.textureID = textureID !== undefined ? textureID : "tDiffuse";
 
-	if ( shader instanceof THREE.ShaderMaterial ) {
+	if (shader instanceof THREE.ShaderMaterial) {
 
 		this.uniforms = shader.uniforms;
 
 		this.material = shader;
+	} else if (shader) {
 
-	} else if ( shader ) {
+		this.uniforms = THREE.UniformsUtils.clone(shader.uniforms);
 
-		this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-
-		this.material = new THREE.ShaderMaterial( {
+		this.material = new THREE.ShaderMaterial({
 
 			defines: shader.defines || {},
 			uniforms: this.uniforms,
 			vertexShader: shader.vertexShader,
 			fragmentShader: shader.fragmentShader
 
-		} );
-
+		});
 	}
 
-	this.camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
+	this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 	this.scene = new THREE.Scene();
 
-	this.quad = new THREE.Mesh( new THREE.PlaneBufferGeometry( 2, 2 ), null );
-	this.scene.add( this.quad );
-
+	this.quad = new THREE.Mesh(new THREE.PlaneBufferGeometry(2, 2), null);
+	this.scene.add(this.quad);
 };
 
-THREE.ShaderPass.prototype = Object.assign( Object.create( THREE.Pass.prototype ), {
+THREE.ShaderPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 
 	constructor: THREE.ShaderPass,
 
-	render: function( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+	render: function render(renderer, writeBuffer, readBuffer, delta, maskActive) {
 
-		if ( this.uniforms[ this.textureID ] ) {
+		if (this.uniforms[this.textureID]) {
 
-			this.uniforms[ this.textureID ].value = readBuffer.texture;
-
+			this.uniforms[this.textureID].value = readBuffer.texture;
 		}
 
 		this.quad.material = this.material;
 
-		if ( this.renderToScreen ) {
+		if (this.renderToScreen) {
 
-			renderer.render( this.scene, this.camera );
-
+			renderer.render(this.scene, this.camera);
 		} else {
 
-			renderer.render( this.scene, this.camera, writeBuffer, this.clear );
-
+			renderer.render(this.scene, this.camera, writeBuffer, this.clear);
 		}
-
 	}
 
-} );
-},{"three":15}],15:[function(require,module,exports){
+});
+
+},{"three":12}],12:[function(require,module,exports){
 // File:src/Three.js
 
 /**
