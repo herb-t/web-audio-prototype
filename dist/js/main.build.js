@@ -44,30 +44,12 @@ var Stage = (function () {
     function Stage() {
         _classCallCheck(this, Stage);
 
-        this.renderer = new THREE.WebGLRenderer({ alpha: true });
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        this.camera.position.z = 200;
-
-        this.scene = new THREE.Scene();
-
         this.clock = new THREE.Clock();
 
         this.randomPoints = [];
-
-        for (var i = 0; i < 25; i++) {
-            this.randomPoints.push(new THREE.Vector3(Math.random() * 200 - 100, Math.random() * 200 - 100, Math.random() * 200 - 100));
-        }
-
-        this.spline = new THREE.CatmullRomCurve3(this.randomPoints);
-
-        this.camPosIndex = 0;
-
+        this.container = document.querySelector('#threeScene');
         this.overlay = document.querySelector('#overlay');
-
-        TweenMax.to(document.querySelector('#overlay'), 120, { scale: 2, ease: Linear.easeOut });
+        this.songs = document.querySelector('#songs');
     }
 
     _createClass(Stage, [{
@@ -77,33 +59,38 @@ var Stage = (function () {
         * bring in audio and scene objects
         */
         value: function init() {
+            var _this = this;
 
             this.getAudio();
             this.createLayout();
-            this.getParticles();
 
-            this.composer = new THREE.EffectComposer(this.renderer);
-            this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+            this.loadSong('audio/mole.mp3');
 
-            this.effectBloom = new THREE.BloomPass(1.25);
-            this.effectFilm = new THREE.FilmPass(0.35, 0.95, 2048, false);
+            this.songs.addEventListener('change', function (e) {
 
-            this.effectFilm.renderToScreen = true;
+                TweenMax.set(document.querySelector('#overlay'), { scale: 1, autoAlpha: 1 });
 
-            this.composer.addPass(this.renderPass);
-            this.composer.addPass(this.effectBloom);
-            this.composer.addPass(this.effectFilm);
+                if (_this.songBuffer) {
+                    _this.reset();
+                }
 
-            this.brightnessEffect = new THREE.ShaderPass(THREE.BrightnessShader);
-            this.brightnessEffect.uniforms['amount'].value = 0.1;
-            this.brightnessEffect.renderToScreen = true;
+                switch (_this.songs.value) {
+                    case 'mole':
+                        _this.loadSong('audio/mole.mp3');
+                        break;
+                    case 'sasha':
+                        _this.loadSong('audio/sasha.mp3');
+                        break;
+                    case 'wham':
+                        _this.loadSong('audio/wham.mp3');
+                        break;
+                    case 'linepulse':
+                        _this.loadSong('audio/linepulse.mp3');
+                        break;
+                }
+            });
 
-            this.composer.addPass(this.renderPass);
-            this.composer.addPass(this.brightnessEffect);
-
-            document.body.appendChild(this.renderer.domElement);
-
-            requestAnimationFrame(this.animate.bind(this));
+            this.animation = requestAnimationFrame(this.animate.bind(this));
 
             window.addEventListener('resize', this._onResize.bind(this));
 
@@ -148,7 +135,7 @@ var Stage = (function () {
             this.camPosIndex++;
             this.endPosIndex--;
 
-            this.speed = 25000;
+            this.speed = 50000;
 
             if (this.camPosIndex > this.speed) {
                 this.camPosIndex = 0;
@@ -176,8 +163,6 @@ var Stage = (function () {
             this.particleGroup.mesh.rotation.z = this.camRot.z;
 
             this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
-
-            //this.sphere3.rotation.z = this.camRot.z;
         }
     }, {
         key: 'updateVisual',
@@ -218,147 +203,163 @@ var Stage = (function () {
 
         /*
         * WebAudio API frequency & volume data
-        * loads & plays audio
-        * create sound 'bars' for equlizer
         */
         value: function getAudio() {
-            var context = new AudioContext();
-            var offlineContext = new OfflineAudioContext(1, 512, 3000);
-
-            this.analyser = context.createAnalyser();
+            this.context = new AudioContext();
+            this.analyser = this.context.createAnalyser();
             this.analyser.smoothingTimeConstant = 0.4;
+            this.analyser.minDecibels = -90;
+            this.analyser.maxDecibels = -10;
             this.analyser.fftSize = 1024;
 
-            this.analyser2 = context.createAnalyser();
-            this.analyser2.smoothingTimeConstant = 0.4;
-            this.analyser2.fftSize = 1024;
+            this.sourceNode = this.context.createBufferSource();
+            var splitter = this.context.createChannelSplitter();
 
-            this.bassAnalyser = context.createAnalyser();
-            this.bassAnalyser.fftSize = 64;
-
-            // low pass filter (lows)
-            this.filter = offlineContext.createBiquadFilter();
-            this.filter.type = 'lowpass';
-            this.filter.frequency.value = 5000;
-            this.filter.gain.value = 25;
-
-            var sourceNode = context.createBufferSource();
-            var offlineSource = offlineContext.createBufferSource();
-            var splitter = context.createChannelSplitter();
-
-            sourceNode.connect(splitter);
+            this.sourceNode.connect(splitter);
 
             splitter.connect(this.analyser, 0);
-            splitter.connect(this.analyser2, 1);
 
-            sourceNode.connect(context.destination);
-            offlineSource.connect(this.filter);
-            this.filter.connect(offlineContext.destination);
+            this.sourceNode.connect(this.context.destination);
+        }
+    }, {
+        key: 'loadSong',
+
+        /*
+        * load song
+        */
+        value: function loadSong(song) {
+            var _this2 = this;
+
+            if (song == '') song == 'audio/mole.mp3';
 
             var request = new XMLHttpRequest();
-            request.open('GET', 'audio/mole.mp3', true);
+            request.open('GET', song, true);
+            request.crossOrigin = 'anonymous';
             request.responseType = 'arraybuffer';
 
-            var songBuffer = undefined;
-
-            // load audio and play it
             request.onload = function () {
-                context.decodeAudioData(request.response, function (buffer) {
-                    songBuffer = buffer;
 
-                    var dur = buffer.duration;
+                _this2.context.decodeAudioData(request.response).then(function (buffer) {
 
-                    sourceNode.buffer = buffer;
-                    sourceNode.start(0);
-                    sourceNode.loop = true;
+                    _this2.songBuffer = buffer;
+                    _this2.playSong(buffer);
+                    buffer.loop = true;
 
-                    // audio data run through low pass filter
-                    offlineContext.startRendering().then(function (renderedBuffer) {
-                        console.log('Rendering completed successfully');
-                        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                        var song = audioCtx.createBufferSource();
-                        song.buffer = renderedBuffer;
-
-                        song.connect(audioCtx.destination);
-
-                        offlineSource.connect(offlineContext.destination);
-
-                        song.start();
-                        TweenMax.to(document.querySelector('#overlay'), 0.5, { autoAlpha: 0, ease: Linear.easeOut });
-                    })['catch'](function (err) {
-                        console.log('Rendering failed: ' + err);
-                    });
-                }, this._onError);
+                    TweenMax.to(document.querySelector('#overlay'), 0.5, { autoAlpha: 0, ease: Linear.easeOut });
+                })['catch'](function (err) {
+                    return _this2._onError(err);
+                });
             };
 
             request.send();
         }
     }, {
+        key: 'playSong',
+
+        /*
+        * play song
+        * @param {string} - song buffer
+        */
+        value: function playSong(buffer) {
+
+            var duration = buffer.duration;
+            this.sourceNode.buffer = buffer;
+            this.sourceNode.start(0);
+            this.sourceNode.loop = true;
+        }
+    }, {
+        key: 'reset',
+
+        /*
+        * reset scene
+        */
+        value: function reset() {
+            var _this3 = this;
+
+            // TweenMax.set(document.querySelector('#overlay'), {scale: 1, autoAlpha: 1, ease: Linear.easeOut});
+
+            this.sourceNode.disconnect();
+
+            window.cancelAnimationFrame(this.animation);
+
+            this.scene.children.forEach(function (object) {
+                return _this3.scene.remove(object);
+            });
+            this.container.removeChild(this.container.children[0]);
+
+            this.context = null;
+            this.analyzer = null;
+            this.renderer = null;
+            this.camera = null;
+            this.scene = null;
+            this.updatedPath = [];
+            this.randomPoints = [];
+            this.splineObjects = [];
+
+            this.getAudio();
+            this.createLayout();
+        }
+    }, {
         key: 'createLayout',
 
         /*
-        * bring in three.js stuff
+        * bring in three scene objects
         */
         value: function createLayout() {
-            // this.getBoxes();
-            // this.getSpheres();
+            TweenMax.to(document.querySelector('#overlay'), 120, { scale: 2, ease: Linear.easeOut });
+
+            this.renderer = new THREE.WebGLRenderer({ alpha: true });
+            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+            this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            this.camera.position.z = 200;
+
+            this.scene = new THREE.Scene();
+
+            this.composer = new THREE.EffectComposer(this.renderer);
+            this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+
+            this.effectBloom = new THREE.BloomPass(1.25);
+            this.effectFilm = new THREE.FilmPass(0.35, 0.95, 2048, false);
+
+            this.effectFilm.renderToScreen = true;
+
+            this.composer.addPass(this.renderPass);
+            this.composer.addPass(this.effectBloom);
+            this.composer.addPass(this.effectFilm);
+
+            this.brightnessEffect = new THREE.ShaderPass(THREE.BrightnessShader);
+            this.brightnessEffect.uniforms['amount'].value = 0.1;
+            this.brightnessEffect.renderToScreen = true;
+
+            this.composer.addPass(this.renderPass);
+            this.composer.addPass(this.brightnessEffect);
+
+            for (var i = 0; i < 25; i++) {
+                this.randomPoints.push(new THREE.Vector3(Math.random() * 200 - 100, Math.random() * 200 - 100, Math.random() * 200 - 100));
+            }
+
+            this.spline = new THREE.CatmullRomCurve3(this.randomPoints);
+
+            this.camPosIndex = 0;
+
             this.getBg();
             this.getLights();
             this.getTubular();
-        }
-    }, {
-        key: 'getSpheres',
+            this.getParticles();
 
-        /*
-        * two sphere objects
-        */
-        value: function getSpheres() {
+            this.container.appendChild(this.renderer.domElement);
 
-            var sphereGeometry = new THREE.SphereGeometry(10, 32, 32);
-            var sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xa21c1c, wireframe: true, transparent: true });
-
-            this.sphere1 = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            this.sphere1.name = 'sphere1';
-            this.scene.add(this.sphere1);
-
-            // this.sphere2 = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            // this.sphere2.name = 'sphere2';
-            // this.sphere2.position.x = 150;
-            // this.scene.add(this.sphere2);
-        }
-    }, {
-        key: 'getBoxes',
-
-        /*
-        * wireframe box objects
-        */
-        value: function getBoxes() {
-            this.boxes = [];
-            this.colors = ['#000080', '#19198c', "#323299", '#4c4ca6', '#6666b2', '#7f7fbf', '#9999cc', '#b2b2d8', '#cccce5', '#e5e5f2', '#ffffff'];
-
-            for (var i = 0; i < 400; i++) {
-                this.box = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5),
-                // new THREE.MeshBasicMaterial({color: '#' + Math.floor(Math.random() * 16777215).toString(16), wireframe: true})
-                new THREE.MeshBasicMaterial({ color: this.colors[Math.floor(Math.random() * (this.colors.length - 1) + 1)], wireframe: true }));
-
-                this.boxes.push(this.box);
-
-                this.box.position.x = -300 + Math.random() * 600;
-                this.box.position.y = -300 + Math.random() * 600;
-                this.box.position.z = -300 + Math.random() * 600;
-
-                this.box.rotation.x = Math.random() * (Math.PI * 4 - 0) + 0;
-                this.box.rotation.y = Math.random() * (Math.PI * 4 - 0) + 0;
-                this.box.rotation.z = Math.random() * (Math.PI * 4 - 0) + 0;
-
-                this.scene.add(this.box);
-            }
+            this.animate();
         }
     }, {
         key: 'getTubular',
 
         /*
         * cylinder objects maps the spine
+        * plots points in spline as 'coins'
+        * applies shaders
         */
         value: function getTubular() {
             var step = 0;
@@ -432,6 +433,7 @@ var Stage = (function () {
 
         /*
         * Shader Particle Engine (SPE)
+        * https://github.com/squarefeet/ShaderParticleEngine
         */
         value: function getParticles() {
             this.particleGroup = new SPE.Group({
@@ -478,7 +480,7 @@ var Stage = (function () {
         }
 
         /*
-        * three sphere that surrounds scene
+        * background sphere that surrounds scene
         */
     }, {
         key: 'getBg',
