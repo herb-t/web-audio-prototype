@@ -35,6 +35,7 @@ var BloomPass = require('../utils/BloomPass.js');
 var MaskPass = require('../utils/MaskPass.js');
 var ShaderPass = require('../utils/ShaderPass.js');
 var SPE = require('../utils/SPE.js');
+var Stats = require('../utils/Stats.js');
 
 /*
 * selectors
@@ -50,6 +51,8 @@ var Stage = (function () {
         this.container = document.querySelector('#threeScene');
         this.overlay = document.querySelector('#overlay');
         this.songs = document.querySelector('#songs');
+        this.stats = new Stats();
+        this.stats.showPanel(0);
     }
 
     _createClass(Stage, [{
@@ -63,6 +66,7 @@ var Stage = (function () {
 
             this.getAudio();
             this.createLayout();
+            document.body.appendChild(this.stats.dom);
 
             this.loadSong('audio/mole.mp3');
 
@@ -108,9 +112,11 @@ var Stage = (function () {
         */
         value: function animate() {
             var time = Date.now();
+            this.stats.begin();
 
             requestAnimationFrame(this.animate.bind(this));
             this.update(time);
+            this.stats.end();
             this.renderer.render(this.scene, this.camera);
         }
     }, {
@@ -192,6 +198,8 @@ var Stage = (function () {
             this.visualMaterial.uniforms['time'].value = frequencyAverage / 50;
 
             this.splineObjects.forEach(function (coin, index) {
+                var beat = frequencyAverage / 1024 * index;
+
                 coin.scale.x = Math.abs(frequencyArray[index] / 7500);
                 coin.scale.y = Math.abs(frequencyArray[index] / 7500);
                 coin.scale.z = Math.abs(frequencyArray[index] / 7500);
@@ -199,7 +207,28 @@ var Stage = (function () {
                 coin.rotation.x = Date.now() * 0.0005;
                 coin.rotation.y = Date.now() * 0.00025;
 
-                coin.material.opacity = Math.abs(lowsArray[index] / 200);
+                coin.material.color.setHex(0xffffff);
+
+                var goldColor = new THREE.MeshBasicMaterial({ color: '#D4AF37' });
+                var initColor = new THREE.Color(coin.material.color.getHex());
+                var goldValue = new THREE.Color(goldColor.color.getHex());
+
+                if (Math.abs(lowsArray[index] / 200) >= 0.25) {
+                    // TweenMax.to(initColor, 0.3, {
+                    //   // r: goldValue.r,
+                    //   // g: goldValue.g,
+                    //   // b: goldValue.b,
+                    //   r: 212,
+                    //   g: 175,
+                    //   b: 55,
+                    //   ease: Linear.easeOut,
+                    //   onUpdate: function() {
+                    //     coin.material.color = initColor;
+                    //   }
+                    // });
+
+                    coin.material.color.setHex(0xD4AF37);
+                };
             });
         }
     }, {
@@ -372,11 +401,12 @@ var Stage = (function () {
                 this.updatedPath.push(this.spline.getPoint(step));
             };
 
-            // position objects along path of the spine
+            // position objects(coins) along path of the spine
             var texture = new THREE.TextureLoader().load('images/coin.jpg');
 
             for (var i = 0; i < this.updatedPath.length; i++) {
-                var pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({ map: texture, transparent: true }));
+                // let pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({map: texture, transparent: true}));
+                var pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true }));
 
                 pointMesh.position.x = this.updatedPath[i].x + Math.random() * 1.5;
                 pointMesh.position.y = this.updatedPath[i].y + Math.random() * 1.5;
@@ -418,9 +448,7 @@ var Stage = (function () {
                 uniforms: this.uniforms,
                 vertexShader: document.getElementById('vertexShader').textContent,
                 fragmentShader: document.getElementById('fragmentShader').textContent,
-                wireframe: true,
-                transparent: true,
-                opacity: 0.5
+                wireframe: true
 
             });
 
@@ -572,7 +600,7 @@ var Stage = (function () {
 
 module.exports = Stage;
 
-},{"../shaders/BrightnessShader.js":4,"../shaders/ConvolutionShader.js":5,"../shaders/CopyShader.js":6,"../shaders/FilmShader.js":7,"../utils/BloomPass.js":8,"../utils/EffectComposer.js":9,"../utils/FilmPass.js":10,"../utils/MaskPass.js":11,"../utils/RenderPass.js":12,"../utils/SPE.js":13,"../utils/ShaderPass.js":14,"three":15}],4:[function(require,module,exports){
+},{"../shaders/BrightnessShader.js":4,"../shaders/ConvolutionShader.js":5,"../shaders/CopyShader.js":6,"../shaders/FilmShader.js":7,"../utils/BloomPass.js":8,"../utils/EffectComposer.js":9,"../utils/FilmPass.js":10,"../utils/MaskPass.js":11,"../utils/RenderPass.js":12,"../utils/SPE.js":13,"../utils/ShaderPass.js":14,"../utils/Stats.js":15,"three":16}],4:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -596,7 +624,7 @@ THREE.BrightnessShader = {
 
 };
 
-},{"three":15}],5:[function(require,module,exports){
+},{"three":16}],5:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -666,7 +694,7 @@ THREE.ConvolutionShader = {
 
 };
 
-},{"three":15}],6:[function(require,module,exports){
+},{"three":16}],6:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -692,7 +720,7 @@ THREE.CopyShader = {
 
 };
 
-},{"three":15}],7:[function(require,module,exports){
+},{"three":16}],7:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -771,7 +799,7 @@ THREE.FilmShader = {
 
 };
 
-},{"three":15}],8:[function(require,module,exports){
+},{"three":16}],8:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -888,7 +916,7 @@ THREE.BloomPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 THREE.BloomPass.blurX = new THREE.Vector2(0.001953125, 0.0);
 THREE.BloomPass.blurY = new THREE.Vector2(0.0, 0.001953125);
 
-},{"three":15}],9:[function(require,module,exports){
+},{"three":16}],9:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1051,7 +1079,7 @@ Object.assign(THREE.Pass.prototype, {
 
 });
 
-},{"three":15}],10:[function(require,module,exports){
+},{"three":16}],10:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1112,7 +1140,7 @@ THREE.FilmPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), {
 
 });
 
-},{"three":15}],11:[function(require,module,exports){
+},{"three":16}],11:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1208,7 +1236,7 @@ Object.assign(THREE.ClearMaskPass.prototype, {
 
 });
 
-},{"three":15}],12:[function(require,module,exports){
+},{"three":16}],12:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1263,7 +1291,7 @@ THREE.RenderPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), 
 
 });
 
-},{"three":15}],13:[function(require,module,exports){
+},{"three":16}],13:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1617,7 +1645,7 @@ var SPE = { distributions: { BOX: 1, SPHERE: 2, DISC: 3 }, valueOverLifetimeLeng
   "use strict";return null !== this.group ? this.group.removeEmitter(this) : console.error("Emitter does not belong to a group, cannot remove."), this;
 };
 
-},{"three":15}],14:[function(require,module,exports){
+},{"three":16}],14:[function(require,module,exports){
 'use strict';
 
 var THREE = require('three');
@@ -1682,7 +1710,180 @@ THREE.ShaderPass.prototype = Object.assign(Object.create(THREE.Pass.prototype), 
 
 });
 
-},{"three":15}],15:[function(require,module,exports){
+},{"three":16}],15:[function(require,module,exports){
+/**
+ * @author mrdoob / http://mrdoob.com/
+ */
+
+'use strict';
+
+var Stats = function Stats() {
+
+	var mode = 0;
+
+	var container = document.createElement('div');
+	container.style.cssText = 'position:fixed;top:0;left:0;cursor:pointer;opacity:0.9;z-index:10000';
+	container.addEventListener('click', function (event) {
+
+		event.preventDefault();
+		showPanel(++mode % container.children.length);
+	}, false);
+
+	//
+
+	function addPanel(panel) {
+
+		container.appendChild(panel.dom);
+		return panel;
+	}
+
+	function showPanel(id) {
+
+		for (var i = 0; i < container.children.length; i++) {
+
+			container.children[i].style.display = i === id ? 'block' : 'none';
+		}
+
+		mode = id;
+	}
+
+	//
+
+	var beginTime = (performance || Date).now(),
+	    prevTime = beginTime,
+	    frames = 0;
+
+	var fpsPanel = addPanel(new Stats.Panel('FPS', '#0ff', '#002'));
+	var msPanel = addPanel(new Stats.Panel('MS', '#0f0', '#020'));
+
+	if (self.performance && self.performance.memory) {
+
+		var memPanel = addPanel(new Stats.Panel('MB', '#f08', '#201'));
+	}
+
+	showPanel(0);
+
+	return {
+
+		REVISION: 16,
+
+		dom: container,
+
+		addPanel: addPanel,
+		showPanel: showPanel,
+
+		begin: function begin() {
+
+			beginTime = (performance || Date).now();
+		},
+
+		end: function end() {
+
+			frames++;
+
+			var time = (performance || Date).now();
+
+			msPanel.update(time - beginTime, 200);
+
+			if (time > prevTime + 1000) {
+
+				fpsPanel.update(frames * 1000 / (time - prevTime), 100);
+
+				prevTime = time;
+				frames = 0;
+
+				if (memPanel) {
+
+					var memory = performance.memory;
+					memPanel.update(memory.usedJSHeapSize / 1048576, memory.jsHeapSizeLimit / 1048576);
+				}
+			}
+
+			return time;
+		},
+
+		update: function update() {
+
+			beginTime = this.end();
+		},
+
+		// Backwards Compatibility
+
+		domElement: container,
+		setMode: showPanel
+
+	};
+};
+
+Stats.Panel = function (name, fg, bg) {
+
+	var min = Infinity,
+	    max = 0,
+	    round = Math.round;
+	var PR = round(window.devicePixelRatio || 1);
+
+	var WIDTH = 80 * PR,
+	    HEIGHT = 48 * PR,
+	    TEXT_X = 3 * PR,
+	    TEXT_Y = 2 * PR,
+	    GRAPH_X = 3 * PR,
+	    GRAPH_Y = 15 * PR,
+	    GRAPH_WIDTH = 74 * PR,
+	    GRAPH_HEIGHT = 30 * PR;
+
+	var canvas = document.createElement('canvas');
+	canvas.width = WIDTH;
+	canvas.height = HEIGHT;
+	canvas.style.cssText = 'width:80px;height:48px';
+
+	var context = canvas.getContext('2d');
+	context.font = 'bold ' + 9 * PR + 'px Helvetica,Arial,sans-serif';
+	context.textBaseline = 'top';
+
+	context.fillStyle = bg;
+	context.fillRect(0, 0, WIDTH, HEIGHT);
+
+	context.fillStyle = fg;
+	context.fillText(name, TEXT_X, TEXT_Y);
+	context.fillRect(GRAPH_X, GRAPH_Y, GRAPH_WIDTH, GRAPH_HEIGHT);
+
+	context.fillStyle = bg;
+	context.globalAlpha = 0.9;
+	context.fillRect(GRAPH_X, GRAPH_Y, GRAPH_WIDTH, GRAPH_HEIGHT);
+
+	return {
+
+		dom: canvas,
+
+		update: function update(value, maxValue) {
+
+			min = Math.min(min, value);
+			max = Math.max(max, value);
+
+			context.fillStyle = bg;
+			context.globalAlpha = 1;
+			context.fillRect(0, 0, WIDTH, GRAPH_Y);
+			context.fillStyle = fg;
+			context.fillText(round(value) + ' ' + name + ' (' + round(min) + '-' + round(max) + ')', TEXT_X, TEXT_Y);
+
+			context.drawImage(canvas, GRAPH_X + PR, GRAPH_Y, GRAPH_WIDTH - PR, GRAPH_HEIGHT, GRAPH_X, GRAPH_Y, GRAPH_WIDTH - PR, GRAPH_HEIGHT);
+
+			context.fillRect(GRAPH_X + GRAPH_WIDTH - PR, GRAPH_Y, PR, GRAPH_HEIGHT);
+
+			context.fillStyle = bg;
+			context.globalAlpha = 0.9;
+			context.fillRect(GRAPH_X + GRAPH_WIDTH - PR, GRAPH_Y, PR, round((1 - value / maxValue) * GRAPH_HEIGHT));
+		}
+
+	};
+};
+
+if (typeof module === 'object') {
+
+	module.exports = Stats;
+}
+
+},{}],16:[function(require,module,exports){
 // File:src/Three.js
 
 /**
