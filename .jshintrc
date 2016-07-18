@@ -21,9 +21,6 @@
     "predef": [
       "suite",
       "setup",
-      "test",
-      "AudioContext",
-      "TweenMax",
-      "Power1"
+      "test"
     ]
 }

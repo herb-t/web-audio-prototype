@@ -12,6 +12,7 @@ var streamify = require('gulp-streamify');
 var uglify = require('gulp-uglify');
 var sourcemaps = require('gulp-sourcemaps');
 var gutil = require('gulp-util');
+var babelify = require('babelify');
 
 /**
  * @param gulp - function
@@ -31,7 +32,7 @@ module.exports = function( gulp, bs, options, flags ) {
     var bundler = browserify(options.app.entry, {
       debug: flags.sourcemap,
       cache: {}
-    });
+    }).transform(babelify);
 
     var rebundle = function() {
       return bundler.bundle()

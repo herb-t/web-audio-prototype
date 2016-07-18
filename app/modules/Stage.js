@@ -14,6 +14,7 @@ const BloomPass = require('../utils/BloomPass.js');
 const MaskPass = require('../utils/MaskPass.js');
 const ShaderPass = require('../utils/ShaderPass.js');
 const SPE = require('../utils/SPE.js');
+var Stats = require('../utils/Stats.js')
 
 /*
 * selectors
@@ -28,6 +29,9 @@ class Stage {
     this.container = document.querySelector('#threeScene');
     this.overlay = document.querySelector('#overlay');
     this.songs = document.querySelector('#songs');
+    this.stats = new Stats();
+    this.stats.showPanel(0);
+
   };
 
   /*
@@ -37,6 +41,7 @@ class Stage {
 
     this.getAudio();
     this.createLayout();
+    document.body.appendChild(this.stats.dom);
 
     this.loadSong('audio/mole.mp3');
 
@@ -82,9 +87,11 @@ class Stage {
   */
   animate() {
     let time = Date.now();
+    this.stats.begin();
 
     requestAnimationFrame(this.animate.bind(this));  
     this.update(time);
+    this.stats.end();
     this.renderer.render(this.scene, this.camera);
 
   };
@@ -164,6 +171,8 @@ class Stage {
     this.visualMaterial.uniforms['time'].value = frequencyAverage / 50;
 
     this.splineObjects.forEach((coin, index) => {
+      let beat = (frequencyAverage / 1024) * index;
+
       coin.scale.x = Math.abs(frequencyArray[index] / 7500);
       coin.scale.y = Math.abs(frequencyArray[index] / 7500);
       coin.scale.z = Math.abs(frequencyArray[index] / 7500);
@@ -171,7 +180,30 @@ class Stage {
       coin.rotation.x = Date.now() * 0.0005;
       coin.rotation.y = Date.now() * 0.00025;
 
-      coin.material.opacity = Math.abs(lowsArray[index] / 200);
+      coin.material.color.setHex(0xffffff);
+
+      let goldColor = new THREE.MeshBasicMaterial({color: '#D4AF37'});
+      let initColor = new THREE.Color(coin.material.color.getHex());
+      let goldValue = new THREE.Color(goldColor.color.getHex());
+
+      if (Math.abs(lowsArray[index] / 200) >= 0.25) {
+        // TweenMax.to(initColor, 0.3, {
+        //   // r: goldValue.r,
+        //   // g: goldValue.g,
+        //   // b: goldValue.b, 
+        //   r: 212,
+        //   g: 175,
+        //   b: 55, 
+        //   ease: Linear.easeOut,
+        //   onUpdate: function() { 
+        //     coin.material.color = initColor;
+        //   }
+        // });
+
+        coin.material.color.setHex(0xD4AF37);
+
+      };
+
     });
 
   };
@@ -332,11 +364,12 @@ class Stage {
       this.updatedPath.push(this.spline.getPoint(step));
     };
 
-    // position objects along path of the spine
+    // position objects(coins) along path of the spine
     var texture = new THREE.TextureLoader().load('images/coin.jpg');
 
     for (let i = 0; i < this.updatedPath.length; i++) {
-      let pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({map: texture, transparent: true}));
+      // let pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({map: texture, transparent: true}));
+      let pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({color: '#ffffff', transparent: true}));
 
       pointMesh.position.x = this.updatedPath[i].x + (Math.random() * 1.5);
       pointMesh.position.y = this.updatedPath[i].y + (Math.random() * 1.5);
@@ -378,9 +411,7 @@ class Stage {
       uniforms: this.uniforms,
       vertexShader: document.getElementById('vertexShader').textContent,
       fragmentShader: document.getElementById('fragmentShader').textContent,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.5
+      wireframe: true
 
     } );
     

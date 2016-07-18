@@ -6,14 +6,12 @@
 'use strict';
 
 var args = require('yargs').argv;
-var config = require('../config.js');
 var merge = require('merge-stream');
 var del = require('del');
 var vinylPaths = require('vinyl-paths');
 var inject = require('gulp-inject-string');
 var rename = require('gulp-rename');
 var replace = require('gulp-replace');
-var gutil = require('gulp-util');
 
 /**
  * @param gulp - function

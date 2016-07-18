@@ -1,5 +1,8 @@
 'use strict';
 
+//passed to mocha config
+var babel = require('babel/register');
+
 var dest = './dist';
 
 var config = {
@@ -37,14 +40,17 @@ var config = {
       src: ['./tests/**/*.js'],
       config: {
         ui: 'tdd',
-        reporter: 'spec'
+        reporter: 'spec',
+        compilers: {
+          js: babel
+        }
       }
     }
   },
 
   scripts: {
     app: {
-      src: ['./app/**/*.js', '!./app/vendor/**/*.js'],
+      src: ['./app/**/*.js', '!./app/vendor/**/*.js', './app/templates/**/*.hbs'],
       entry: './app/index.js'
     },
     vendor: {
@@ -73,6 +79,10 @@ var config = {
 
     jsMap: dest + '/js/*.map',
     jsMapDist: dest + '/js/'
+  },
+
+  bump: {
+    src: './package.json'
   },
 
   bower: './bower_components/'

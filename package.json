@@ -14,14 +14,18 @@
     "gulp4": "npm uninstall gulp -g && npm install gulpjs/gulp-cli#4.0 -g"
   },
   "devDependencies": {
+    "babel": "^5.8.21",
+    "babelify": "^6.1.3",
     "browser-sync": "^2.6.4",
     "browserify": "^5.10.0",
+    "browserify-handlebars": "^1.0.0",
     "browserify-shim": "^3.7.0",
     "chai": "^1.9.1",
     "del": "^1.1.1",
     "exorcist": "^0.1.6",
-    "glslify": "^5.1.0",
     "gulp": "git://github.com/gulpjs/gulp.git#4.0",
+    "gulp-babel": "^5.1.0",
+    "gulp-bump": "^0.3.1",
     "gulp-cached": "^1.0.1",
     "gulp-concat": "^2.4.0",
     "gulp-concat-sourcemap": "^1.3.1",
@@ -38,9 +42,8 @@
     "gulp-stylus": "^1.3.0",
     "gulp-uglify": "^1.0.0",
     "gulp-util": "^3.0.1",
-    "imagemin-gifsicle": "^4.2.0",
-    "imagemin-jpegtran": "^4.3.0",
-    "imagemin-pngquant": "^4.1.2",
+    "handlebars": "^3.0.0",
+    "hbsfy": "^2.2.1",
     "jshint-stylish": "^0.4.0",
     "karma": "^0.12.23",
     "merge-stream": "^0.1.8",
@@ -59,12 +62,12 @@
   },
   "browserify-shim": {
     "math": "global:Math",
-    "THREE": "golbal:three",
     "TweenMax": "global:TweenMax"
   },
   "browserify": {
     "transform": [
-      "browserify-shim"
+      "browserify-shim",
+      "browserify-handlebars"
     ]
   }
 }

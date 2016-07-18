@@ -25,13 +25,14 @@ gulp.task('scripts-app', require('./tasks/scripts-app')( gulp, bs, config.script
 gulp.task('scripts-vendor', require('./tasks/scripts-vendor')( gulp, bs, config.scripts, config.flags ));
 gulp.task('static', require('./tasks/static')( gulp, bs, config.static ));
 gulp.task('styles', require('./tasks/styles')( gulp, bs, config.styles, config.flags ));
-gulp.task('tests-jscs', require('./tasks/tests-jscs')( gulp, config.tests.lint ));
-gulp.task('tests-jshint', require('./tasks/tests-jshint')( gulp, config.tests.lint ));
-gulp.task('tests-mocha', require('./tasks/tests-mocha')( gulp, config.tests.mocha ));
+// gulp.task('tests-jscs', require('./tasks/tests-jscs')( gulp, config.tests.lint ));
+// gulp.task('tests-eslint', require('./tasks/tests-eslint')( gulp, config.tests.lint ));
+// gulp.task('tests-mocha', require('./tasks/tests-mocha')( gulp, config.tests.mocha ));
 gulp.task('version', require('./tasks/version')( gulp, config.version ));
+gulp.task('bump', require('./tasks/bump')( gulp, config.bump ));
 
 gulp.task('scripts', gulp.parallel( 'scripts-app', 'scripts-vendor' ));
-gulp.task('tests', gulp.parallel( 'tests-jscs', 'tests-jshint', 'tests-mocha' ));
+// gulp.task('tests', gulp.parallel( 'tests-jscs', 'tests-eslint', 'tests-mocha' ));
 
 // define watch actions
 gulp.task('watch', function(done) {
@@ -48,9 +49,9 @@ gulp.task('watch', function(done) {
     }
   });
 
-  gulp.watch(config.scripts.app.src, gulp.series( 'tests', 'scripts-app' ));
-  gulp.watch(config.scripts.vendor.src, gulp.series( 'tests', 'scripts-vendor' ));
-  gulp.watch(config.scripts.tests.src, gulp.series( 'tests' ));
+  gulp.watch(config.scripts.app.src, gulp.series( 'scripts-app' ));
+  gulp.watch(config.scripts.vendor.src, gulp.series( 'scripts-vendor' ));
+  // gulp.watch(config.scripts.tests.src, gulp.series( 'tests' ));
 
   gulp.watch(config.styles.src, gulp.series( 'styles' ));
   gulp.watch(config.static.src, gulp.series( 'static' ));
@@ -60,14 +61,14 @@ gulp.task('watch', function(done) {
 });
 
 // define user commands
-gulp.task('build', gulp.series( 'clean', 'tests', gulp.parallel( 'static', 'scripts', 'styles', 'images' ) ));
+gulp.task('build', gulp.series('clean', gulp.parallel( 'static', 'scripts', 'styles', 'images' ) ));
 
-gulp.task('build-dev', gulp.series( 'dev', 'build' ));
+gulp.task('build-dev', gulp.series('dev', 'build' ));
 
-gulp.task('build-prod', gulp.series( 'prod', 'build', 'version' ));
+gulp.task('build-prod', gulp.series('prod', 'build', 'version' ));
 
-gulp.task('watch-dev', gulp.series(  'dev', 'build', 'watch' ));
+gulp.task('watch-dev', gulp.series('dev', 'build', 'watch' ));
 
-gulp.task('watch-prod', gulp.series( 'prod', 'build', 'watch' ));
+gulp.task('watch-prod', gulp.series('prod', 'build', 'watch' ));
 
-gulp.task('default', gulp.series( 'watch-dev' ));
+gulp.task('default', gulp.series('watch-dev' ));
