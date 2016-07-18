@@ -45,21 +45,25 @@ class Stage {
       TweenMax.set(document.querySelector('#overlay'), {scale: 1, autoAlpha: 1});
 
       if(this.songBuffer) {
-        this.reset();
+        this.redeax();
       }
 
       switch(this.songs.value) {
         case 'mole':
           this.loadSong('audio/mole.mp3');
+
           break;
         case 'sasha':
           this.loadSong('audio/sasha.mp3');
+
           break;
         case 'wham':
           this.loadSong('audio/wham.mp3');
+
           break;
-        case 'linepulse':
-          this.loadSong('audio/linepulse.mp3');
+        case 'mistral':
+          this.loadSong('audio/mistral.mp3');
+
           break;
       }
 
@@ -199,11 +203,8 @@ class Stage {
   */
   loadSong(song) {
 
-    if (song == '') song == 'audio/mole.mp3';
-
     let request = new XMLHttpRequest();
     request.open('GET', song, true);
-    request.crossOrigin = 'anonymous';
     request.responseType = 'arraybuffer';
 
     request.onload = () =>  {
@@ -240,9 +241,7 @@ class Stage {
   /*
   * reset scene
   */
-  reset() {
-    // TweenMax.set(document.querySelector('#overlay'), {scale: 1, autoAlpha: 1, ease: Linear.easeOut});
-
+  redeax() {
     this.sourceNode.disconnect();
 
     window.cancelAnimationFrame(this.animation);
@@ -266,6 +265,7 @@ class Stage {
 
   /*
   * bring in three scene objects
+  * create the scene
   */
   createLayout() {
     TweenMax.to(document.querySelector('#overlay'), 120, {scale: 2, ease: Linear.easeOut});
