@@ -71,21 +71,25 @@ var Stage = (function () {
                 TweenMax.set(document.querySelector('#overlay'), { scale: 1, autoAlpha: 1 });
 
                 if (_this.songBuffer) {
-                    _this.reset();
+                    _this.redeax();
                 }
 
                 switch (_this.songs.value) {
                     case 'mole':
                         _this.loadSong('audio/mole.mp3');
+
                         break;
                     case 'sasha':
                         _this.loadSong('audio/sasha.mp3');
+
                         break;
                     case 'wham':
                         _this.loadSong('audio/wham.mp3');
+
                         break;
-                    case 'linepulse':
-                        _this.loadSong('audio/linepulse.mp3');
+                    case 'mistral':
+                        _this.loadSong('audio/mistral.mp3');
+
                         break;
                 }
             });
@@ -230,11 +234,8 @@ var Stage = (function () {
         value: function loadSong(song) {
             var _this2 = this;
 
-            if (song == '') song == 'audio/mole.mp3';
-
             var request = new XMLHttpRequest();
             request.open('GET', song, true);
-            request.crossOrigin = 'anonymous';
             request.responseType = 'arraybuffer';
 
             request.onload = function () {
@@ -268,15 +269,13 @@ var Stage = (function () {
             this.sourceNode.loop = true;
         }
     }, {
-        key: 'reset',
+        key: 'redeax',
 
         /*
         * reset scene
         */
-        value: function reset() {
+        value: function redeax() {
             var _this3 = this;
-
-            // TweenMax.set(document.querySelector('#overlay'), {scale: 1, autoAlpha: 1, ease: Linear.easeOut});
 
             this.sourceNode.disconnect();
 
@@ -304,6 +303,7 @@ var Stage = (function () {
 
         /*
         * bring in three scene objects
+        * create the scene
         */
         value: function createLayout() {
             TweenMax.to(document.querySelector('#overlay'), 120, { scale: 2, ease: Linear.easeOut });
