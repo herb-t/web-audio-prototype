@@ -51,6 +51,7 @@ var Stage = (function () {
         this.container = document.querySelector('#threeScene');
         this.overlay = document.querySelector('#overlay');
         this.songs = document.querySelector('#songs');
+        this.tickTimer = 0;
         this.stats = new Stats();
         this.stats.showPanel(0);
     }
@@ -142,6 +143,7 @@ var Stage = (function () {
             this.composer.render();
 
             this.updateVisual();
+
             this.camPosIndex++;
             this.endPosIndex--;
 
@@ -172,7 +174,29 @@ var Stage = (function () {
             this.particleGroup.mesh.rotation.y = this.camRot.y;
             this.particleGroup.mesh.rotation.z = this.camRot.z;
 
-            this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+            // this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));   
+
+            if (this.songBuffer) {
+
+                this.tickTimer++;
+
+                this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+                // this.camera.lookAt(0, 10, 0);
+
+                if (this.tickTimer / 50 == parseInt(this.songBuffer.duration / 4, 10)) {
+
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 1000) / 10000));
+                    this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/lavatile.jpg");
+                } else if (this.tickTimer / 100 == parseInt(this.songBuffer.duration / 4, 10)) {
+
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 1000) / 20000));
+                    this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/grassnormals.jpg");
+                } else if (this.tickTimer / 100 == parseInt(this.songBuffer.duration / 3, 10)) {
+
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 1000) / this.speed));
+                    this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/waternormals.jpg");
+                }
+            }
         }
     }, {
         key: 'updateVisual',
@@ -209,11 +233,14 @@ var Stage = (function () {
 
                 coin.material.color.setHex(0xffffff);
 
-                var goldColor = new THREE.MeshBasicMaterial({ color: '#D4AF37' });
                 var initColor = new THREE.Color(coin.material.color.getHex());
-                var goldValue = new THREE.Color(goldColor.color.getHex());
+                // let goldColor = new THREE.MeshBasicMaterial({color: '#D4AF37'});
+                // let goldValue = new THREE.Color(goldColor.color.getHex());
 
                 if (Math.abs(lowsArray[index] / 200) >= 0.25) {
+
+                    coin.material.color.setHex(0xD4AF37);
+
                     // TweenMax.to(initColor, 0.3, {
                     //   // r: goldValue.r,
                     //   // g: goldValue.g,
@@ -224,10 +251,9 @@ var Stage = (function () {
                     //   ease: Linear.easeOut,
                     //   onUpdate: function() {
                     //     coin.material.color = initColor;
+                    //     // coin.material.color.setHex(initColor)
                     //   }
                     // });
-
-                    coin.material.color.setHex(0xD4AF37);
                 };
             });
         }
@@ -235,7 +261,7 @@ var Stage = (function () {
         key: 'getAudio',
 
         /*
-        * WebAudio API frequency & volume data
+        * audio frequency & volume data
         */
         value: function getAudio() {
             this.context = new AudioContext();
@@ -276,6 +302,7 @@ var Stage = (function () {
                     buffer.loop = true;
 
                     TweenMax.to(document.querySelector('#overlay'), 0.5, { autoAlpha: 0, ease: Linear.easeOut });
+                    TweenMax.set(document.querySelector('#content'), { delay: 0.75, autoAlpha: 0 });
                 })['catch'](function (err) {
                     return _this2._onError(err);
                 });
