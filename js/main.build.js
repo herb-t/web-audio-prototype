@@ -46,7 +46,8 @@ var Stage = (function () {
         _classCallCheck(this, Stage);
 
         this.clock = new THREE.Clock();
-
+        this.speed = 50000;
+        this.camPosIndexIncrease = 10;
         this.randomPoints = [];
         this.container = document.querySelector('#threeScene');
         this.overlay = document.querySelector('#overlay');
@@ -54,6 +55,7 @@ var Stage = (function () {
         this.tickTimer = 0;
         this.stats = new Stats();
         this.stats.showPanel(0);
+        this.changingColor = new THREE.Color(255, 255, 255);
     }
 
     _createClass(Stage, [{
@@ -63,43 +65,19 @@ var Stage = (function () {
         * bring in audio and scene objects
         */
         value: function init() {
-            var _this = this;
 
             this.getAudio();
             this.createLayout();
             document.body.appendChild(this.stats.dom);
 
-            this.loadSong('audio/mole.mp3');
+            this.loadSong('audio/happy.mp3');
 
-            this.songs.addEventListener('change', function (e) {
+            // this.songs.addEventListener('change', (e) => {
 
-                TweenMax.set(document.querySelector('#overlay'), { scale: 1, autoAlpha: 1 });
-
-                if (_this.songBuffer) {
-                    _this.redeax();
-                }
-
-                switch (_this.songs.value) {
-                    case 'mole':
-                        _this.loadSong('audio/mole.mp3');
-
-                        break;
-                    case 'sasha':
-                        _this.loadSong('audio/sasha.mp3');
-
-                        break;
-                    case 'wham':
-                        _this.loadSong('audio/wham.mp3');
-
-                        break;
-                    case 'mistral':
-                        _this.loadSong('audio/mistral.mp3');
-
-                        break;
-                }
-            });
-
+            // });
             this.animation = requestAnimationFrame(this.animate.bind(this));
+
+            this.songs.addEventListener('change', this._onChange.bind(this));
 
             window.addEventListener('resize', this._onResize.bind(this));
 
@@ -118,6 +96,7 @@ var Stage = (function () {
             requestAnimationFrame(this.animate.bind(this));
             this.update(time);
             this.stats.end();
+
             this.renderer.render(this.scene, this.camera);
         }
     }, {
@@ -147,8 +126,6 @@ var Stage = (function () {
             this.camPosIndex++;
             this.endPosIndex--;
 
-            this.speed = 50000;
-
             if (this.camPosIndex > this.speed) {
                 this.camPosIndex = 0;
             }
@@ -174,26 +151,37 @@ var Stage = (function () {
             this.particleGroup.mesh.rotation.y = this.camRot.y;
             this.particleGroup.mesh.rotation.z = this.camRot.z;
 
-            // this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));   
-
             if (this.songBuffer) {
 
+                var songDuration = this.songBuffer.duration;
                 this.tickTimer++;
-
                 this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
-                // this.camera.lookAt(0, 10, 0);
 
-                if (this.tickTimer / 50 == parseInt(this.songBuffer.duration / 4, 10)) {
+                if (this.audioTimer.getElapsedTime() >= songDuration / 4) {
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / 12500));
+                }
 
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 1000) / 10000));
+                if (this.audioTimer.getElapsedTime() >= songDuration / 3) {
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+                }
+
+                if (this.audioTimer.getElapsedTime() >= songDuration / 2) {
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / 30000));
+                }
+
+                if (this.audioTimer.getElapsedTime() >= songDuration / 1.5) {
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+                }
+
+                if (this.tickTimer / 50 == parseInt(songDuration / 4, 10)) {
                     this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/lavatile.jpg");
-                } else if (this.tickTimer / 100 == parseInt(this.songBuffer.duration / 4, 10)) {
-
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 1000) / 20000));
+                } else if (this.tickTimer / 100 == parseInt(songDuration / 4, 10)) {
                     this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/grassnormals.jpg");
-                } else if (this.tickTimer / 100 == parseInt(this.songBuffer.duration / 3, 10)) {
-
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 1000) / this.speed));
+                } else if (this.tickTimer / 100 == parseInt(songDuration / 3, 10)) {
+                    this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/waternormals.jpg");
+                } else if (this.tickTimer / 100 == parseInt(songDuration / 2, 10)) {
+                    this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/lavatile.jpg");
+                } else if (this.tickTimer / 100 == parseInt(songDuration / 1.5, 10)) {
                     this.visualMaterial.uniforms['texture2'].value = new THREE.TextureLoader().load("images/waternormals.jpg");
                 }
             }
@@ -231,29 +219,30 @@ var Stage = (function () {
                 coin.rotation.x = Date.now() * 0.0005;
                 coin.rotation.y = Date.now() * 0.00025;
 
-                coin.material.color.setHex(0xffffff);
-
-                var initColor = new THREE.Color(coin.material.color.getHex());
-                // let goldColor = new THREE.MeshBasicMaterial({color: '#D4AF37'});
-                // let goldValue = new THREE.Color(goldColor.color.getHex());
+                //coin.material.color.setHex(0xfcfcfc);
 
                 if (Math.abs(lowsArray[index] / 200) >= 0.25) {
 
-                    coin.material.color.setHex(0xD4AF37);
-
-                    // TweenMax.to(initColor, 0.3, {
-                    //   // r: goldValue.r,
-                    //   // g: goldValue.g,
-                    //   // b: goldValue.b,
+                    // TweenMax.to(coin.material.color, 0.15, {
                     //   r: 212,
                     //   g: 175,
                     //   b: 55,
-                    //   ease: Linear.easeOut,
-                    //   onUpdate: function() {
-                    //     coin.material.color = initColor;
-                    //     // coin.material.color.setHex(initColor)
-                    //   }
+                    //   ease: Power4.easeOut
                     // });
+
+                    coin.material.color.setHex(0xd4af37);
+                    coin.material.opacity = 1;
+                } else {
+
+                    // TweenMax.to(coin.material.color, 0.15, {
+                    //   r: 255,
+                    //   g: 255,
+                    //   b: 255,
+                    //   ease: Power4.easeOut
+                    // });
+
+                    coin.material.color.setHex(0xfcfcfc);
+                    coin.material.opacity = 0.35;
                 };
             });
         }
@@ -287,7 +276,7 @@ var Stage = (function () {
         * load song
         */
         value: function loadSong(song) {
-            var _this2 = this;
+            var _this = this;
 
             var request = new XMLHttpRequest();
             request.open('GET', song, true);
@@ -295,16 +284,16 @@ var Stage = (function () {
 
             request.onload = function () {
 
-                _this2.context.decodeAudioData(request.response).then(function (buffer) {
+                _this.context.decodeAudioData(request.response).then(function (buffer) {
 
-                    _this2.songBuffer = buffer;
-                    _this2.playSong(buffer);
+                    _this.songBuffer = buffer;
+                    _this.playSong(buffer);
                     buffer.loop = true;
 
                     TweenMax.to(document.querySelector('#overlay'), 0.5, { autoAlpha: 0, ease: Linear.easeOut });
                     TweenMax.set(document.querySelector('#content'), { delay: 0.75, autoAlpha: 0 });
                 })['catch'](function (err) {
-                    return _this2._onError(err);
+                    return _this._onError(err);
                 });
             };
 
@@ -322,6 +311,8 @@ var Stage = (function () {
             var duration = buffer.duration;
             this.sourceNode.buffer = buffer;
             this.sourceNode.start(0);
+            this.audioTimer = new THREE.Clock();
+            this.audioTimer.start();
             this.sourceNode.loop = true;
         }
     }, {
@@ -331,14 +322,14 @@ var Stage = (function () {
         * reset scene
         */
         value: function redeax() {
-            var _this3 = this;
+            var _this2 = this;
 
             this.sourceNode.disconnect();
 
             window.cancelAnimationFrame(this.animation);
 
             this.scene.children.forEach(function (object) {
-                return _this3.scene.remove(object);
+                return _this2.scene.remove(object);
             });
             this.container.removeChild(this.container.children[0]);
 
@@ -350,6 +341,7 @@ var Stage = (function () {
             this.updatedPath = [];
             this.randomPoints = [];
             this.splineObjects = [];
+            this.tickTimer = 0;
 
             this.getAudio();
             this.createLayout();
@@ -433,7 +425,7 @@ var Stage = (function () {
 
             for (var i = 0; i < this.updatedPath.length; i++) {
                 // let pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({map: texture, transparent: true}));
-                var pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true }));
+                var pointMesh = new THREE.Mesh(new THREE.TorusGeometry(10, 3, 16, 10), new THREE.MeshBasicMaterial({ color: '#ffffff', wireframe: true, transparent: true }));
 
                 pointMesh.position.x = this.updatedPath[i].x + Math.random() * 1.5;
                 pointMesh.position.y = this.updatedPath[i].y + Math.random() * 1.5;
@@ -568,6 +560,38 @@ var Stage = (function () {
 
             this.camera.add(spotLight);
             this.camera.add(new THREE.PointLightHelper(spotLight, 1));
+        }
+    }, {
+        key: '_onChange',
+        value: function _onChange() {
+            TweenMax.set(document.querySelector('#overlay'), { scale: 1, autoAlpha: 1 });
+
+            if (this.songBuffer) {
+                this.redeax();
+            }
+
+            switch (this.songs.value) {
+                case 'mole':
+                    this.loadSong('audio/mole.mp3');
+
+                    break;
+                case 'sasha':
+                    this.loadSong('audio/sasha.mp3');
+
+                    break;
+                case 'wham':
+                    this.loadSong('audio/wham.mp3');
+
+                    break;
+                case 'mistral':
+                    this.loadSong('audio/mistral.mp3');
+
+                    break;
+                case 'happy':
+                    this.loadSong('audio/happy.mp3');
+
+                    break;
+            }
         }
     }, {
         key: '_getAverageVolume',
