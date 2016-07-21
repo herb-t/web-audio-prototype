@@ -37,17 +37,13 @@ var ShaderPass = require('../utils/ShaderPass.js');
 var SPE = require('../utils/SPE.js');
 var Stats = require('../utils/Stats.js');
 
-/*
-* selectors
-*/
-
 var Stage = (function () {
     function Stage() {
         _classCallCheck(this, Stage);
 
         this.clock = new THREE.Clock();
         this.speed = 50000;
-        this.camPosIndexIncrease = 10;
+        this.camPosIndexOffset = 10;
         this.randomPoints = [];
         this.container = document.querySelector('#threeScene');
         this.overlay = document.querySelector('#overlay');
@@ -72,9 +68,6 @@ var Stage = (function () {
 
             this.loadSong('audio/happy.mp3');
 
-            // this.songs.addEventListener('change', (e) => {
-
-            // });
             this.animation = requestAnimationFrame(this.animate.bind(this));
 
             this.songs.addEventListener('change', this._onChange.bind(this));
@@ -91,10 +84,12 @@ var Stage = (function () {
         */
         value: function animate() {
             var time = Date.now();
+
             this.stats.begin();
 
             requestAnimationFrame(this.animate.bind(this));
             this.update(time);
+
             this.stats.end();
 
             this.renderer.render(this.scene, this.camera);
@@ -155,22 +150,22 @@ var Stage = (function () {
 
                 var songDuration = this.songBuffer.duration;
                 this.tickTimer++;
-                this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+                this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / this.speed));
 
                 if (this.audioTimer.getElapsedTime() >= songDuration / 4) {
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / 12500));
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / 12500));
                 }
 
                 if (this.audioTimer.getElapsedTime() >= songDuration / 3) {
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / this.speed));
                 }
 
                 if (this.audioTimer.getElapsedTime() >= songDuration / 2) {
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / 30000));
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / 30000));
                 }
 
                 if (this.audioTimer.getElapsedTime() >= songDuration / 1.5) {
-                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+                    this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / this.speed));
                 }
 
                 if (this.tickTimer / 50 == parseInt(songDuration / 4, 10)) {
@@ -218,8 +213,6 @@ var Stage = (function () {
 
                 coin.rotation.x = Date.now() * 0.0005;
                 coin.rotation.y = Date.now() * 0.00025;
-
-                //coin.material.color.setHex(0xfcfcfc);
 
                 if (Math.abs(lowsArray[index] / 200) >= 0.25) {
 
@@ -274,6 +267,7 @@ var Stage = (function () {
 
         /*
         * load song
+        * @param {String} song
         */
         value: function loadSong(song) {
             var _this = this;
@@ -290,8 +284,8 @@ var Stage = (function () {
                     _this.playSong(buffer);
                     buffer.loop = true;
 
-                    TweenMax.to(document.querySelector('#overlay'), 0.5, { autoAlpha: 0, ease: Linear.easeOut });
-                    TweenMax.set(document.querySelector('#content'), { delay: 0.75, autoAlpha: 0 });
+                    TweenMax.to(_this.overlay, 0.5, { autoAlpha: 0, ease: Linear.easeOut });
+                    TweenMax.to(_this.container, 0.5, { delay: 0.05, autoAlpha: 1, ease: Linear.easeOut });
                 })['catch'](function (err) {
                     return _this._onError(err);
                 });
@@ -338,6 +332,7 @@ var Stage = (function () {
             this.renderer = null;
             this.camera = null;
             this.scene = null;
+            this.composer = null;
             this.updatedPath = [];
             this.randomPoints = [];
             this.splineObjects = [];
@@ -354,7 +349,6 @@ var Stage = (function () {
         * create the scene
         */
         value: function createLayout() {
-            TweenMax.to(document.querySelector('#overlay'), 120, { scale: 2, ease: Linear.easeOut });
 
             this.renderer = new THREE.WebGLRenderer({ alpha: true });
             this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -510,7 +504,7 @@ var Stage = (function () {
                 },
 
                 color: {
-                    value: [new THREE.Color('white'), new THREE.Color('red')]
+                    value: [new THREE.Color('#ffffff'), new THREE.Color('#a51000')]
                 },
 
                 size: {
@@ -525,12 +519,12 @@ var Stage = (function () {
             this.particleGroup.addEmitter(this.emitter);
             this.scene.add(this.particleGroup.mesh);
         }
+    }, {
+        key: 'getBg',
 
         /*
         * background sphere that surrounds scene
         */
-    }, {
-        key: 'getBg',
         value: function getBg() {
             var geometry = new THREE.SphereGeometry(600, 32, 32);
             var texture = new THREE.TextureLoader().load('images/bg-stars.jpg');
@@ -563,8 +557,13 @@ var Stage = (function () {
         }
     }, {
         key: '_onChange',
+
+        /*
+        * handles change event for songs list
+        */
         value: function _onChange() {
-            TweenMax.set(document.querySelector('#overlay'), { scale: 1, autoAlpha: 1 });
+            TweenMax.set(this.overlay, { autoAlpha: 1 });
+            TweenMax.set(this.container, { autoAlpha: 1 });
 
             if (this.songBuffer) {
                 this.redeax();
