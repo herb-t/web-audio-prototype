@@ -16,16 +16,13 @@ const ShaderPass = require('../utils/ShaderPass.js');
 const SPE = require('../utils/SPE.js');
 var Stats = require('../utils/Stats.js')
 
-/*
-* selectors
-*/
 class Stage {
 
   constructor() {
 
     this.clock = new THREE.Clock();
     this.speed = 50000;
-    this.camPosIndexIncrease = 10;
+    this.camPosIndexOffset = 10;
     this.randomPoints = [];
     this.container = document.querySelector('#threeScene');
     this.overlay = document.querySelector('#overlay');
@@ -34,7 +31,6 @@ class Stage {
     this.stats = new Stats();
     this.stats.showPanel(0);
     this.changingColor = new THREE.Color(255, 255, 255);
-
 
   };
 
@@ -49,11 +45,6 @@ class Stage {
 
     this.loadSong('audio/happy.mp3');
 
-    // this.songs.addEventListener('change', (e) => {
-
-      
-
-    // });
     this.animation = requestAnimationFrame(this.animate.bind(this));
 
     this.songs.addEventListener('change', this._onChange.bind(this));
@@ -69,10 +60,12 @@ class Stage {
   */
   animate() {
     let time = Date.now();
+
     this.stats.begin();
 
     requestAnimationFrame(this.animate.bind(this));  
     this.update(time);
+
     this.stats.end();
 
     this.renderer.render(this.scene, this.camera);
@@ -131,23 +124,23 @@ class Stage {
     if (this.songBuffer) {
 
       let songDuration = this.songBuffer.duration;
-      this.tickTimer++;
-      this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+      this.tickTimer ++;
+      this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / this.speed));
 
       if (this.audioTimer.getElapsedTime() >= (songDuration / 4)) {
-        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / 12500 ));
+        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / 12500 ));
       }
 
       if (this.audioTimer.getElapsedTime() >= (songDuration / 3)) {
-        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed));
+        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / this.speed));
       }
 
       if (this.audioTimer.getElapsedTime() >= (songDuration / 2)) {
-        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / 30000 ));
+        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / 30000 ));
       }
 
       if (this.audioTimer.getElapsedTime() >= (songDuration / 1.5)) {
-        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + 10) / this.speed ));
+        this.camera.lookAt(this.spline.getPoint((this.camPosIndex + this.camPosIndexOffset) / this.speed));
       }
 
       if ((this.tickTimer / 50) == parseInt((songDuration / 4), 10)) {
@@ -198,8 +191,6 @@ class Stage {
 
       coin.rotation.x = Date.now() * 0.0005;
       coin.rotation.y = Date.now() * 0.00025;
-
-      //coin.material.color.setHex(0xfcfcfc);
 
       if (Math.abs(lowsArray[index] / 200) >= 0.25) {
 
@@ -256,6 +247,7 @@ class Stage {
 
   /*
   * load song
+  * @param {String} song
   */
   loadSong(song) {
 
@@ -271,8 +263,8 @@ class Stage {
         this.playSong(buffer);
         buffer.loop = true;
 
-        TweenMax.to(document.querySelector('#overlay'), 0.5, {autoAlpha: 0, ease: Linear.easeOut});
-        TweenMax.set(document.querySelector('#content'), {delay: 0.75, autoAlpha: 0});
+        TweenMax.to(this.overlay, 0.5, {autoAlpha: 0, ease: Linear.easeOut});
+        TweenMax.to(this.container, 0.5, {delay: 0.05, autoAlpha: 1, ease: Linear.easeOut});
 
       }).catch((err) => this._onError(err));
 
@@ -313,6 +305,7 @@ class Stage {
     this.renderer = null;
     this.camera = null;
     this.scene = null;
+    this.composer = null;
     this.updatedPath = [];
     this.randomPoints = [];
     this.splineObjects = [];
@@ -328,7 +321,6 @@ class Stage {
   * create the scene
   */
   createLayout() {
-    TweenMax.to(document.querySelector('#overlay'), 120, {scale: 2, ease: Linear.easeOut});
 
     this.renderer = new THREE.WebGLRenderer({alpha: true});
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -481,7 +473,7 @@ class Stage {
       },
 
       color: {
-        value: [ new THREE.Color('white'), new THREE.Color('red') ]
+        value: [ new THREE.Color('#ffffff'), new THREE.Color('#a51000') ]
       },
 
       size: {
@@ -495,7 +487,7 @@ class Stage {
 
     this.particleGroup.addEmitter(this.emitter);
     this.scene.add( this.particleGroup.mesh );
-  }
+  };
 
   /*
   * background sphere that surrounds scene
@@ -529,8 +521,12 @@ class Stage {
     this.camera.add(new THREE.PointLightHelper(spotLight, 1));
   };
 
+  /*
+  * handles change event for songs list
+  */
   _onChange() {
-    TweenMax.set(document.querySelector('#overlay'), {scale: 1, autoAlpha: 1});
+    TweenMax.set(this.overlay, {autoAlpha: 1});
+    TweenMax.set(this.container, {autoAlpha: 1});
 
     if(this.songBuffer) {
       this.redeax();
